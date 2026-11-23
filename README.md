@@ -222,6 +222,11 @@ scoop install main/fd
 scoop install main/jq
 scoop install main/ripgrep
 scoop install main/curl
+# Claude Code, native installer (installs to ~\.local\bin\claude.exe, which the
+# Prerequisites put on PATH; updates itself in the background)
+Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression
+claude --version
+# Then install the Claude Code config: see claude/README.md
 # ============================================================================
 #                           Containerization Tools
 # ============================================================================
@@ -347,3 +352,9 @@ if (!(Select-String -Path $PROFILE -Pattern "Docker WSL2 bridge" -Quiet)) {
     Write-Host "⚠️  Docker bridge already present in profile, skipping."
 }
 ```
+
+## Claude Code
+
+Global `CLAUDE.md`, `settings.json` (PowerShell 7 as Claude's shell, status line) and the status
+line script: see [claude/README.md](claude/README.md). How Claude's shell relates to your
+profile and the Unix tools: [docs/claude-windows-tools.md](docs/claude-windows-tools.md).

@@ -1,0 +1,29 @@
+{
+  "cleanupPeriodDays": 365,
+  "permissions": {
+    "allow": [
+      "WebSearch"
+    ],
+    "ask": [
+      "WebFetch"
+    ]
+  },
+  "extraKnownMarketplaces": {
+    "claude-plugins-official": {
+      "source": {
+        "source": "github",
+        "repo": "anthropics/claude-plugins-official"
+      }
+    }
+  },
+  "effortLevel": "high",
+  "tui": "fullscreen",
+  "defaultShell": "powershell",
+  "statusLine": {
+    "type": "command",
+    "command": "pwsh -NoProfile -NoLogo -File \"__HOME__/.claude/status-line-max.ps1\""
+  },
+  "env": {
+    "CLAUDE_CODE_USE_POWERSHELL_TOOL": "1"
+  }
+}
