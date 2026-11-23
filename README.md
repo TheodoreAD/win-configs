@@ -326,27 +326,59 @@ Windows side. Install WSL from PowerShell:
 # ============================================================================
 #                               WSL Installation
 # ============================================================================
-wsl --install -d Ubuntu-24.04
-wsl --set-default Ubuntu-24.04
-wsl
+$Distro = "Ubuntu-24.04"
+# --no-launch skips Ubuntu's interactive first run (username + password prompt);
+# the user is created by the next block instead
+wsl --install -d $Distro --no-launch
+wsl --set-default $Distro
 # By default the WSL2 virtual disk can grow very large. To cap it (e.g. at
-# 512GB instead of the default), pass --vhd-size and skip --set-default/wsl
-# above so it doesn't auto-launch before you're ready:
+# 512GB instead of the default), add --vhd-size:
 #   wsl --install -d Ubuntu-24.04 --vhd-size 512GB --no-launch
 # To redo an existing install with a different size, delete it first
 # (this destroys all data in the distro) then reinstall:
 #   wsl --unregister Ubuntu-24.04
 #   wsl --install -d Ubuntu-24.04 --vhd-size 512GB --no-launch
-# First launch (wsl -d Ubuntu-24.04) still needs to happen interactively to
-# create the Linux user account.
 ```
+
+Then create the Linux user from Windows. It's called `dev` on every machine: a short, generic
+name, not tied to the Windows account, so paths like `/home/dev` are the same everywhere and
+nothing personal is involved. It gets passwordless sudo: anything running as you on Windows can
+already get root in WSL with `wsl -u root`, so a sudo password inside WSL would be a speed bump,
+not a security boundary, and passwordless sudo lets the Linux setup run unattended. The default
+user is set through the distro's `DefaultUid` in the Windows registry, so `/etc/wsl.conf` stays
+entirely the Linux setup's file.
+
+```shell
+# ============================================================================
+#                                  WSL user
+# ============================================================================
+$Distro = "Ubuntu-24.04"
+$LinuxUser = "dev"
+# Create the user (no usable password) in the sudo group, if it doesn't exist yet
+wsl -d $Distro -u root -- sh -c "id -u $LinuxUser >/dev/null 2>&1 || useradd --create-home --shell /bin/bash --groups sudo $LinuxUser"
+# Passwordless sudo, checked with visudo before it takes effect
+wsl -d $Distro -u root -- sh -c "echo '$LinuxUser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/$LinuxUser && chmod 0440 /etc/sudoers.d/$LinuxUser && visudo -cf /etc/sudoers.d/$LinuxUser"
+# Make it the default user (Windows-side setting), then restart the distro
+$Uid = [int](wsl -d $Distro -u root -- id -u $LinuxUser)
+$LxssKey = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' |
+    Where-Object { (Get-ItemProperty $_.PSPath).DistributionName -eq $Distro }
+Set-ItemProperty -Path $LxssKey.PSPath -Name DefaultUid -Value $Uid -Type DWord
+wsl --terminate $Distro
+# Check: should print "dev" and "sudo ok"
+wsl -d $Distro -- sh -c 'whoami; sudo -n true && echo "sudo ok"'
+```
+
+This was verified on an existing distro that had only `root`. On a brand-new install, if
+Ubuntu's first-run prompt still appears, enter `dev` as the username and any password (the
+sudoers rule makes it irrelevant), then run the block above, which skips the existing user.
 
 Everything inside WSL (systemd, Docker Engine and its configuration) is installed and configured
 by the separate `power-user-linux-setup` repo (same GitHub account), not by this one. What the
 Windows side expects from it:
 
-- **systemd enabled** in WSL (`/etc/wsl.conf`: `[boot]` `systemd=true`)
-- **Docker Engine** running as a systemd service, the user in the `docker` group
+- **systemd enabled** in WSL (`/etc/wsl.conf`: `[boot]` `systemd=true`). Merge settings into
+  that file rather than overwriting it.
+- **Docker Engine** running as a systemd service, the `dev` user in the `docker` group
 - **dockerd listening on both** `unix:///var/run/docker.sock` and `tcp://127.0.0.1:2375`
   (`"hosts"` in `/etc/docker/daemon.json`, plus a systemd override that clears the unit's
   default `-H` flag, which otherwise conflicts with `"hosts"`)
@@ -363,7 +395,8 @@ port has no authentication, so only processes on this machine can use it, but an
 - **Profile:** `scripts/profile.ps1` defines `docker` and `docker-compose` functions that run
   `wsl -d Ubuntu-24.04 docker ...`. They only exist in interactive shells, not for `kind`,
   `tilt`, `helm` or Claude Code's shell, which call `docker.exe` directly.
-- **WSL:** Ubuntu-24.04 is installed, but Docker Engine isn't (no `docker`, no
+- **WSL:** Ubuntu-24.04 is installed with the `dev` user as default (created 2026-11-24; before
+  that the distro only had `root`), but Docker Engine isn't (no `docker`, no
   `/etc/docker/daemon.json`).
 
 ### Target
