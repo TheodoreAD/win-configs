@@ -21,7 +21,11 @@ Run this before any other section below:
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 Invoke-RestMethod -Uri https://get.scoop.sh | Invoke-Expression
 scoop install main/git
-# Ensure .local\bin is in the Path, at the top
+# Add git's GNU tools and .local\bin to the user PATH.
+# NOTE: Windows builds PATH as system PATH + user PATH, so System32 always comes
+# first. Programs present in both (find.exe, sort.exe, ssh.exe) resolve to the
+# System32 versions; call git's GNU ones by full path if needed. See
+# docs/claude-windows-tools.md.
 $pathsToAdd = @(
     "$env:USERPROFILE\scoop\apps\git\current\usr\bin",
     "$env:USERPROFILE\scoop\apps\git\current\bin",
