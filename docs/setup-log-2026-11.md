@@ -123,6 +123,18 @@ What was changed on the first machine set up this way, during Claude Code sessio
   `.vscode/` and `.idea/` ignored.
 - **Obsidian and Syncthing** made optional installs.
 
+## 2026-11-24: WSL user and network notes
+
+- **WSL user `dev` created from Windows.** The distro only had `root`: the old README step that
+  wrote `/etc/wsl.conf` with `tee` replaced the whole file, and no normal user existed. `dev` is
+  a generic name (not tied to the Windows account, the same on every machine), with
+  passwordless sudo (a WSL sudo password isn't a boundary: `wsl -u root` works from Windows
+  without one) and set as the default via the registry's `DefaultUid`, leaving
+  `/etc/wsl.conf` to the Linux setup repo.
+- **Network profile reviewed:** the home LAN is on Public but File and Printer Sharing is on for
+  Public and a `Users` share exists; the network printer (IPP) doesn't need either. Ideal setup
+  recorded in `docs/plan-apps-and-settings.md`; nothing changed yet.
+
 ## Open items
 
 - **Docker target** (above), once the Linux setup project (`power-user-linux-setup`) has run in
