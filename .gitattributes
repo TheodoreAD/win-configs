@@ -7,6 +7,7 @@
 # Scripts that run on Linux or inside WSL: LF even if the rule above is ever relaxed
 *.sh text eol=lf
 *.py text eol=lf
+skills/**/assets/* text eol=lf
 
 # Windows batch files can misbehave with LF: keep them CRLF
 *.bat  text eol=crlf

@@ -1,3 +1,13 @@
+### Agent skills
+# Skills are authored in skills/ and installed with `npx skills` (see skills/README.md).
+# Installed copies, the shared .agents/ folder other agents use, and the install lock
+# are local state, never committed.
+.claude/skills/
+.agents/
+skills-lock.json
+# Personal Claude Code permissions (also in the global git ignore)
+.claude/settings.local.json
+
 ### VisualStudioCode template
 # Editor project folders are personal, never committed (.idea/ is ignored below)
 .vscode/
