@@ -394,3 +394,22 @@ It stores and checks out text as LF on every OS (overriding `core.autocrlf` for 
 keeps `.bat`/`.cmd` as CRLF, and marks images, PDFs, fonts, archives and Office files binary.
 Everything on Windows used here (VS Code, Notepad, Obsidian, PowerShell 5.1 and 7) handles LF.
 Existing CRLF files stay as they are on disk until git rewrites them, and won't show as changed.
+
+## Development tools update
+
+```shell
+# Run from powershell.exe if pwsh itself has an update (scoop can't replace the
+# running pwsh). If Syncthing is installed, quit it from its tray first, or it's
+# skipped as running.
+scoop update
+scoop update *
+# CascadiaCode-NF and CascadiaCode-NF-Mono are held and skipped (see Fonts)
+scoop status
+# Claude Code updates itself; to force it:
+claude update
+# Node LTS
+fnm install --lts; fnm default lts-latest
+```
+
+Herdr updates itself. Its shipped layouts and mods are restored on every start; the munza and
+jankeesvw mods are updated by hand (see [herdr/README.md](herdr/README.md)).
