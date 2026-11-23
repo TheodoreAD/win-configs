@@ -44,6 +44,39 @@ not a PowerShell script; one-off values can be README one-liners.
 
 Left at default and probably not worth capturing: taskbar alignment, power plan (Balanced).
 
+## Network profile and sharing
+
+How it works:
+
+- **A network profile is a label** (Public, Private, Domain) that decides which firewall
+  allow-rules apply. Both Public and Private block unsolicited incoming connections by default;
+  the difference is which rules are switched on. Windows keeps Network Discovery and File and
+  Printer Sharing off on Public and allows them on Private.
+- **App rules are tied to a profile:** clicking "Allow" in an app's firewall prompt creates a
+  rule only for the profile that was active then. Moving the network to another profile
+  silently changes which apps can accept connections.
+- **Printing to a network printer is outgoing** (IPP/WSD to the printer), so it needs neither
+  File and Printer Sharing nor Private. Those are for sharing this PC's own folders or printers.
+
+State on the first machine (2026-11-24): the home LAN is on Public, but File and Printer Sharing
+is enabled for Public, a share named `Users` exists, and some app rules exist only for Public
+(e.g. Syncthing) while others exist only for Private.
+
+Ideal setup, to decide and apply:
+
+1. **Profile:** Private for the trusted home LAN (Windows' intended label; Network Discovery
+   helps find printers), Public for anything else. Keeping Public at home also works, as long
+   as the rules below are right.
+2. **File and Printer Sharing off** unless this PC really shares a folder or printer. Remove
+   unneeded shares first (`Get-SmbShare`, `Remove-SmbShare -Name <name>`), then, as admin:
+   `Disable-NetFirewallRule -DisplayGroup "File and Printer Sharing"`.
+3. **App rules that need the LAN** (Syncthing, remote access tools, the Herdr SSH rule) cover
+   the profile actually in use, ideally scoped to the LAN (`-RemoteAddress LocalSubnet`) or to
+   a specific IP. Check with:
+   `Get-NetFirewallRule -Direction Inbound -Action Allow -Enabled True | Select-Object DisplayName, Profile`.
+4. **Switch the profile** (admin):
+   `Set-NetConnectionProfile -InterfaceAlias <adapter> -NetworkCategory Private`.
+
 ## Remove superseded or useless installs
 
 Run these yourself (uninstalling needs explicit approval); check each for work dependencies
