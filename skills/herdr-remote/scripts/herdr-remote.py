@@ -408,8 +408,14 @@ def windows_doctor(r: Report, args) -> None:
             r.add(FAIL, f"Firewall rule '{rule['name']}'", f"open to any address ({profiles})",
                   f"admin pwsh: Set-NetFirewallRule -DisplayName '{rule['name']}' -RemoteAddress <controller IP>")
             continue
-        r.add(OK, f"Firewall rule '{rule['name']}'", f"only from {remote} ({profiles})")
-        fw_ips.extend(ip.split("/")[0] for ip in remote.split(","))
+        # netsh prints single addresses as "a.b.c.d/32" or as a range "a.b.c.d-a.b.c.d"
+        addrs = []
+        for part in remote.split(","):
+            part = part.strip().split("/")[0]
+            lo, _, hi = part.partition("-")
+            addrs.append(lo if not hi or hi == lo else part)
+        r.add(OK, f"Firewall rule '{rule['name']}'", f"only from {', '.join(addrs)} ({profiles})")
+        fw_ips.extend(addrs)
         # DomainAuthenticated maps to the Domain profile
         covered = {"Domain" if p == "DomainAuthenticated" else p for p in lan_profiles}
         if profiles not in ("Any", "?") and not covered <= set(profiles.split(",")):

@@ -39,7 +39,13 @@ The first start creates `C:\ProgramData\ssh\` with `sshd_config` and the host ke
 
 Edit `C:\ProgramData\ssh\sshd_config` as admin (`notepad C:\ProgramData\ssh\sshd_config`).
 Put these lines **above** the `Match Group administrators` block at the end of the file.
-Anything below a `Match` line only applies inside that block.
+Anything below a `Match` line only applies inside that block. Back up the file first
+(`Copy-Item $c "$c.bak"`).
+
+To insert them from the shell instead, write the file with
+`[IO.File]::WriteAllText($c, $text, (New-Object Text.UTF8Encoding $false))`. That gives
+UTF-8 without a BOM in both shells; `Set-Content -Encoding utf8NoBOM` fails in Windows
+PowerShell 5.1, which "Run as administrator" often opens instead of PowerShell 7.
 
 ```
 PasswordAuthentication no
@@ -78,8 +84,8 @@ reads only this file:
 ```powershell
 $f = 'C:\ProgramData\ssh\administrators_authorized_keys'
 $line = '<paste the whole line from key-line>'
-if (Test-Path $f) { Add-Content -Path $f -Value $line -Encoding utf8NoBOM }
-else { Set-Content -Path $f -Value $line -Encoding utf8NoBOM }
+# UTF-8 without BOM, in both Windows PowerShell 5.1 and PowerShell 7
+[IO.File]::AppendAllText($f, $line + "`n", (New-Object Text.UTF8Encoding $false))
 icacls.exe $f /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F"
 ```
 
