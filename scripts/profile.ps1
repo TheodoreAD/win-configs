@@ -37,7 +37,8 @@ function d {
         Where-Object { $_ -match '\S' }
 }
 
-# Docker WSL2 bridge
+# Docker WSL2 bridge (interactive shells only; to be replaced by DOCKER_HOST,
+# see "WSL and Docker" in the win-configs README)
 $WSL_DISTRO = "Ubuntu-24.04"
 function docker { wsl -d $WSL_DISTRO docker @Args }
 function docker-compose { wsl -d $WSL_DISTRO docker compose @Args }

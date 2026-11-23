@@ -283,9 +283,9 @@ claude --version
 # ============================================================================
 #                           Containerization Tools
 # ============================================================================
-# We currently don't need Docker CLI, we're using WSL shims
-#scoop install main/docker
-#scoop install main/docker-compose
+# Windows-side Docker CLIs; see "Docker" below for how they reach the engine in WSL
+scoop install main/docker
+scoop install main/docker-compose
 scoop install main/kubectl
 scoop install main/helm
 scoop install main/kind
@@ -293,7 +293,10 @@ scoop bucket add tilt-dev https://github.com/tilt-dev/scoop-bucket
 scoop install tilt-dev/tilt
 ```
 
-Now the hard part, Docker in WSL, without anything on the Windows side:
+## WSL and Docker
+
+Docker runs as Docker Engine inside WSL (Ubuntu-24.04), with nothing like Docker Desktop on the
+Windows side. Install WSL from PowerShell:
 
 ```shell
 # ============================================================================
@@ -302,109 +305,61 @@ Now the hard part, Docker in WSL, without anything on the Windows side:
 wsl --install -d Ubuntu-24.04
 wsl --set-default Ubuntu-24.04
 wsl
+# By default the WSL2 virtual disk can grow very large. To cap it (e.g. at
+# 512GB instead of the default), pass --vhd-size and skip --set-default/wsl
+# above so it doesn't auto-launch before you're ready:
+#   wsl --install -d Ubuntu-24.04 --vhd-size 512GB --no-launch
+# To redo an existing install with a different size, delete it first
+# (this destroys all data in the distro) then reinstall:
+#   wsl --unregister Ubuntu-24.04
+#   wsl --install -d Ubuntu-24.04 --vhd-size 512GB --no-launch
+# First launch (wsl -d Ubuntu-24.04) still needs to happen interactively to
+# create the Linux user account.
 ```
 
-In WSL:
+Everything inside WSL (systemd, Docker Engine and its configuration) is installed and configured
+by the separate `power-user-linux-setup` repo (same GitHub account), not by this one. What the
+Windows side expects from it:
 
-```shell
-# ============================================================================
-#                                Enable Systemd
-# ============================================================================
-# Enable systemd
-echo -e "[boot]\nsystemd=true" | sudo tee /etc/wsl.conf
-# Exit and restart WSL
-exit
-```
+- **systemd enabled** in WSL (`/etc/wsl.conf`: `[boot]` `systemd=true`)
+- **Docker Engine** running as a systemd service, the user in the `docker` group
+- **dockerd listening on both** `unix:///var/run/docker.sock` and `tcp://127.0.0.1:2375`
+  (`"hosts"` in `/etc/docker/daemon.json`, plus a systemd override that clears the unit's
+  default `-H` flag, which otherwise conflicts with `"hosts"`)
 
-In Powershell:
+WSL 2 forwards `127.0.0.1:2375` to Windows, which is how Windows tools reach the engine. The
+port has no authentication, so only processes on this machine can use it, but any of them can
+(the same trust level as membership in the `docker` group).
 
-```shell
-# ============================================================================
-#                                 WSL Restart
-# ============================================================================
-wsl --shutdown
-wsl
-```
+### Current state (2026-11-23)
 
-In WSL:
+- **Windows:** scoop's `docker` and `docker-compose` CLIs are installed, but their default
+  context points at Docker Desktop's named pipe (`npipe:////./pipe/docker_engine`), which
+  doesn't exist, and `DOCKER_HOST` isn't set. So `docker.exe` reaches nothing.
+- **Profile:** `scripts/profile.ps1` defines `docker` and `docker-compose` functions that run
+  `wsl -d Ubuntu-24.04 docker ...`. They only exist in interactive shells, not for `kind`,
+  `tilt`, `helm` or Claude Code's shell, which call `docker.exe` directly.
+- **WSL:** Ubuntu-24.04 is installed, but Docker Engine isn't (no `docker`, no
+  `/etc/docker/daemon.json`).
 
-```shell
-# ============================================================================
-#                               Docker Installation
-# ============================================================================
-curl -fsSL https://get.docker.com | sh
-sudo groupadd docker
-sudo gpasswd --add ${USER} docker
-sudo systemctl enable --now docker
-# ============================================================================
-#                              Docker Configuration
-# ============================================================================
-DAEMON_JSON="/etc/docker/daemon.json"
-# Configure daemon.json for TCP + unix socket
-if [ ! -f "$DAEMON_JSON" ] || ! grep -q "2375" "$DAEMON_JSON"; then
-    echo "Configuring $DAEMON_JSON..."
-    sudo tee "$DAEMON_JSON" > /dev/null <<'EOF'
-{
-  "hosts": ["unix:///var/run/docker.sock", "tcp://127.0.0.1:2375"]
-}
-EOF
-    echo "✅ daemon.json updated"
-else
-    echo "⚠️  daemon.json already configured, skipping."
-fi
-# Ensure systemd override exists (needed when "hosts" is set in daemon.json)
-# Otherwise dockerd conflicts with the default socket flag in the service unit
-OVERRIDE_DIR="/etc/systemd/system/docker.service.d"
-OVERRIDE_FILE="$OVERRIDE_DIR/override.conf"
-if [ ! -f "$OVERRIDE_FILE" ]; then
-    echo "Adding systemd override to strip default -H flag..."
-    sudo mkdir -p "$OVERRIDE_DIR"
-    sudo tee "$OVERRIDE_FILE" > /dev/null <<'EOF'
-[Service]
-ExecStart=
-ExecStart=/usr/bin/dockerd
-EOF
-    echo "✅ systemd override created"
-else
-    echo "⚠️  systemd override already present, skipping."
-fi
-# ============================================================================
-#                                Docker Restart
-# ============================================================================
-sudo systemctl daemon-reload
-sudo systemctl restart docker
-echo "✅ Docker restarted"
-# ============================================================================
-#                                 Verification
-# ============================================================================
-echo "Docker socket listeners:"
-sudo ss -tlnp | grep dockerd || true
-docker version --format "Client: {{.Client.Version}}  Server: {{.Server.Version}}"
-```
+### Target
 
-In Powershell:
+1. Run `power-user-linux-setup` inside WSL so Docker Engine listens as described above.
+2. Point the Windows CLIs at it, for every process (not just the profile):
 
-```shell
-# ============================================================================
-#                             Docker WSL2 bridge
-# ============================================================================
-$WSL_DISTRO = "Ubuntu-24.04"
-$profileContent = @"
+   ```shell
+   [Environment]::SetEnvironmentVariable("DOCKER_HOST", "tcp://127.0.0.1:2375", "User")
+   ```
 
-# Docker WSL2 bridge
-`$WSL_DISTRO = "$WSL_DISTRO"
-function docker { wsl -d `$WSL_DISTRO docker `@Args }
-function docker-compose { wsl -d `$WSL_DISTRO docker compose `@Args }
-"@
+3. Remove the `docker` / `docker-compose` functions from `scripts/profile.ps1`, so `docker`
+   is the real CLI everywhere.
+4. Verify from a new `pwsh` (WSL starts on demand, but the engine must be running):
 
-# Avoid duplicate entries
-if (!(Select-String -Path $PROFILE -Pattern "Docker WSL2 bridge" -Quiet)) {
-    Add-Content -Path $PROFILE -Value $profileContent
-    Write-Host "✅ PowerShell profile updated: $PROFILE"
-} else {
-    Write-Host "⚠️  Docker bridge already present in profile, skipping."
-}
-```
+   ```shell
+   docker version --format "Client: {{.Client.Version}}  Server: {{.Server.Version}}"
+   docker compose version
+   kind create cluster --name smoke; kind delete cluster --name smoke
+   ```
 
 ## Claude Code
 
