@@ -58,7 +58,7 @@ Then quit Claude Code completely and start it again from a PowerShell 7 terminal
 One line, in this order:
 
 ```text
-win-configs  master ↑1 ●4 +81 −1 │ ◔ 24%  59m  95% 3h14m  99% 5h54m │ $10.63 󰔛 1h33m/20m │ Opus 5.5 med 
+win-configs  main ↑1 ●4 +81 −1 │ ◔ 24%  59m  95% 3h14m  99% 5h54m │ $10.63 󰔛 1h33m/20m │ Opus 5.5 med 
 ```
 
 - **Folder, branch, changes** — folder name (blue); branch icon + branch (orange when dirty,
