@@ -134,9 +134,13 @@ Open a new `pwsh` tab: the Oh My Posh prompt should show icons, and `l` (GNU lon
 # ============================================================================
 #                                   Wezterm
 # ============================================================================
+# Fallback terminal. Herdr (see herdr/README.md) is the main terminal; WezTerm is
+# for when Herdr has to be closed: `scoop update pwsh` (run from powershell.exe),
+# Herdr updates or problems, restarting herdr-core. Starts pwsh in two side-by-side
+# panes, maximized. (Windows Terminal, built into Windows 11, would also do.)
 scoop bucket add extras
 scoop install extras/wezterm
-reg import "C:\Users\Memphis-Mobile-PC\scoop\apps\wezterm\current\install-context.reg"
+reg import "$HOME\scoop\apps\wezterm\current\install-context.reg"
 $weztermConfigDir = "$env:USERPROFILE\.config\wezterm"
 $weztermConfigFile = "$weztermConfigDir\wezterm.lua"
 New-Item -ItemType Directory -Force -Path $weztermConfigDir | Out-Null
@@ -144,7 +148,7 @@ $weztermConfig = @"
 local wezterm = require "wezterm"
 local mux = wezterm.mux
 local config = wezterm.config_builder()
-config.default_prog = { "powershell.exe", "-NoLogo" }
+config.default_prog = { "pwsh.exe", "-NoLogo" }
 config.font = wezterm.font "CaskaydiaCove NFM"
 config.font_size = 12.0
 wezterm.on("gui-startup", function(cmd)
