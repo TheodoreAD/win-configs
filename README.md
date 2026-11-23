@@ -59,8 +59,17 @@ needs, then the profile itself:
 scoop bucket add nerd-fonts
 # Proportional Nerd Font (for editors)
 scoop install nerd-fonts/CascadiaCode-NF
-# Monospaced Nerd Font (for terminals)
+# Monospaced Nerd Font (for terminals; font name "CaskaydiaCove Nerd Font Mono")
 scoop install nerd-fonts/CascadiaCode-NF-Mono
+# Hold the fonts: scoop can install them but never update them. Windows loads every
+# registered font at sign-in and the System process keeps the files locked for the
+# whole session, so the package's pre-uninstall "is it in use" check always fails.
+# Without the hold, a new font version makes `scoop update *` stop entirely.
+# To update anyway: scoop unhold both, delete their "CaskaydiaCove ... (TrueType)"
+# entries under HKCU\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts, restart
+# Windows, then `scoop update CascadiaCode-NF CascadiaCode-NF-Mono` before opening
+# anything (it re-registers the new version).
+scoop hold CascadiaCode-NF CascadiaCode-NF-Mono
 # TODO: configure VS Code with CascadiaCode Nerd Font
 #   editor: "CaskaydiaCove Nerd Font"
 #   terminal: "CaskaydiaCove NFM"
