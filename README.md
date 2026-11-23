@@ -19,7 +19,8 @@ Also in this repo:
 - **[scripts/](scripts/)** — `profile.ps1` (the PowerShell profile block),
   `claude-session-extract.py` (recover what past Claude Code sessions did),
   `check-readme-blocks.py` (check that the README's PowerShell blocks parse),
-  `stage-hunks.py` (stage only some of a file's changes, for one commit per change)
+  `stage-hunks.py` (stage only some of a file's changes, for one commit per change),
+  `setup-wsl.py` (Ubuntu 24.04 as the default WSL distro with the `dev` user)
 
 ## Development tools installation
 
@@ -320,57 +321,45 @@ scoop install tilt-dev/tilt
 ## WSL and Docker
 
 Docker runs as Docker Engine inside WSL (Ubuntu-24.04), with nothing like Docker Desktop on the
-Windows side. Install WSL from PowerShell:
+Windows side. `scripts/setup-wsl.py` installs Ubuntu 24.04 LTS as the default distro and sets
+up its user, from PowerShell (not admin), in the repo root:
 
 ```shell
 # ============================================================================
-#                               WSL Installation
+#                                     WSL
 # ============================================================================
-$Distro = "Ubuntu-24.04"
-# --no-launch skips Ubuntu's interactive first run (username + password prompt);
-# the user is created by the next block instead
-wsl --install -d $Distro --no-launch
-wsl --set-default $Distro
-# By default the WSL2 virtual disk can grow very large. To cap it (e.g. at
-# 512GB instead of the default), add --vhd-size:
-#   wsl --install -d Ubuntu-24.04 --vhd-size 512GB --no-launch
-# To redo an existing install with a different size, delete it first
-# (this destroys all data in the distro) then reinstall:
+# WSL itself, once per machine: in an admin PowerShell run
+#   wsl --install --no-distribution
+# then reboot.
+# Ubuntu 24.04 as the default distro, with the dev user as the default login.
+# Safe to run again: it skips what's done and repairs what isn't.
+uv run python scripts/setup-wsl.py
+# Cap the virtual disk on first install (it can grow very large otherwise):
+#   uv run python scripts/setup-wsl.py --vhd-size 512GB
+# Verify only, change nothing:
+#   uv run python scripts/setup-wsl.py --check
+# Start over (destroys all data in the distro), then run the script again:
 #   wsl --unregister Ubuntu-24.04
-#   wsl --install -d Ubuntu-24.04 --vhd-size 512GB --no-launch
 ```
 
-Then create the Linux user from Windows. It's called `dev` on every machine: a short, generic
-name, not tied to the Windows account, so paths like `/home/dev` are the same everywhere and
-nothing personal is involved. It gets passwordless sudo: anything running as you on Windows can
-already get root in WSL with `wsl -u root`, so a sudo password inside WSL would be a speed bump,
-not a security boundary, and passwordless sudo lets the Linux setup run unattended. The default
-user is set through the distro's `DefaultUid` in the Windows registry, so `/etc/wsl.conf` stays
-entirely the Linux setup's file.
+What it sets up, and why:
 
-```shell
-# ============================================================================
-#                                  WSL user
-# ============================================================================
-$Distro = "Ubuntu-24.04"
-$LinuxUser = "dev"
-# Create the user (no usable password) in the sudo group, if it doesn't exist yet
-wsl -d $Distro -u root -- sh -c "id -u $LinuxUser >/dev/null 2>&1 || useradd --create-home --shell /bin/bash --groups sudo $LinuxUser"
-# Passwordless sudo, checked with visudo before it takes effect
-wsl -d $Distro -u root -- sh -c "echo '$LinuxUser ALL=(ALL) NOPASSWD:ALL' > /etc/sudoers.d/$LinuxUser && chmod 0440 /etc/sudoers.d/$LinuxUser && visudo -cf /etc/sudoers.d/$LinuxUser"
-# Make it the default user (Windows-side setting), then restart the distro
-$Uid = [int](wsl -d $Distro -u root -- id -u $LinuxUser)
-$LxssKey = Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Lxss' |
-    Where-Object { (Get-ItemProperty $_.PSPath).DistributionName -eq $Distro }
-Set-ItemProperty -Path $LxssKey.PSPath -Name DefaultUid -Value $Uid -Type DWord
-wsl --terminate $Distro
-# Check: should print "dev" and "sudo ok"
-wsl -d $Distro -- sh -c 'whoami; sudo -n true && echo "sudo ok"'
-```
+- **Install without the first run:** `wsl --install -d Ubuntu-24.04 --no-launch`. Ubuntu's
+  interactive first run (`/usr/lib/wsl/wsl-setup`) is skipped by clearing the distro's
+  `RunOOBE` flag: it would prompt for a user, append `[user] default=...` to `/etc/wsl.conf`
+  and register the Ubuntu font in Windows.
+- **User `dev`** on every machine: a short, generic name, not tied to the Windows account, so
+  paths like `/home/dev` are the same everywhere and nothing personal is involved.
+- **Passwordless sudo** (`/etc/sudoers.d/dev`, validated with `visudo`): anything running as you
+  on Windows can already get root in WSL with `wsl -u root`, so a sudo password inside WSL would
+  be a speed bump, not a security boundary, and this lets the Linux setup run unattended.
+- **Default login** through the distro's `DefaultUid` in the Windows registry, so
+  `/etc/wsl.conf` stays entirely the Linux setup's file.
 
-This was verified on an existing distro that had only `root`. On a brand-new install, if
-Ubuntu's first-run prompt still appears, enter `dev` as the username and any password (the
-sudoers rule makes it irrelevant), then run the block above, which skips the existing user.
+Tested 2026-11-24: removing the distro, a fresh install (about 30 s), a second run (no changes),
+a first interactive login (lands as `dev`, no prompt, `/etc/wsl.conf` unchanged) and `--check`
+(catches a pending first run). Not tested: making Ubuntu the default when other distros are
+already installed.
 
 Everything inside WSL (systemd, Docker Engine and its configuration) is installed and configured
 by the separate `power-user-linux-setup` repo (same GitHub account), not by this one. What the
@@ -395,8 +384,8 @@ port has no authentication, so only processes on this machine can use it, but an
 - **Profile:** `scripts/profile.ps1` defines `docker` and `docker-compose` functions that run
   `wsl -d Ubuntu-24.04 docker ...`. They only exist in interactive shells, not for `kind`,
   `tilt`, `helm` or Claude Code's shell, which call `docker.exe` directly.
-- **WSL:** Ubuntu-24.04 is installed with the `dev` user as default (created 2026-11-24; before
-  that the distro only had `root`), but Docker Engine isn't (no `docker`, no
+- **WSL:** Ubuntu-24.04 was reinstalled fresh on 2026-11-24 with `scripts/setup-wsl.py` (the
+  old distro only had `root`), but Docker Engine isn't installed yet (no `docker`, no
   `/etc/docker/daemon.json`).
 
 ### Target
