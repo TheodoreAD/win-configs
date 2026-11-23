@@ -184,6 +184,16 @@ Continue installing tools:
 scoop install main/gh
 # Do this after the "Git over SSH" step; choose SSH as the git protocol
 gh auth login
+# Git identity, derived from the GitHub account (only if not set yet): the profile
+# name (or login), and the public profile email or else GitHub's noreply address
+$GhUser = gh api user | ConvertFrom-Json
+if (-not (git config --global user.name)) {
+    git config --global user.name ($GhUser.name ? $GhUser.name : $GhUser.login)
+}
+if (-not (git config --global user.email)) {
+    $NoReply = "$($GhUser.id)+$($GhUser.login)@users.noreply.github.com"
+    git config --global user.email ($GhUser.email ? $GhUser.email : $NoReply)
+}
 # Upload this machine's key (skip if gh auth login already uploaded it)
 $KeyName = "id_ed25519_" + $env:COMPUTERNAME.ToLower().Replace("-", "_")
 gh ssh-key add "$HOME\.ssh\$KeyName.pub" --title $env:COMPUTERNAME
