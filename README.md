@@ -1,6 +1,22 @@
 # Windows Configs
 
-Configurations for all manner of Windows system and software
+Configurations for all manner of Windows system and software.
+
+Also in this repo:
+
+- **[claude/](claude/README.md)** — Claude Code global config and status line
+- **[herdr/](herdr/README.md)** — Herdr desktop app settings, Estro layout and mods
+- **[ssh/](ssh/config)** — `~/.ssh/config` template (see "Git over SSH" below)
+- **[git/gitattributes](git/gitattributes)** — line-ending template for repos
+- **[docs/claude-windows-tools.md](docs/claude-windows-tools.md)** — Claude Code's shell, the
+  PowerShell profile, aliases and PATH order
+- **[docs/setup-log-2026-11.md](docs/setup-log-2026-11.md)** — what was changed and why, in
+  order
+- **[docs/plan-apps-and-settings.md](docs/plan-apps-and-settings.md)** — plan for apps outside
+  scoop, Windows settings and removing superseded installs
+- **[scripts/](scripts/)** — `profile.ps1` (the PowerShell profile block),
+  `claude-session-extract.py` (recover what past Claude Code sessions did),
+  `check-readme-blocks.py` (check that the README's PowerShell blocks parse)
 
 ## Development tools installation
 
