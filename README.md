@@ -293,6 +293,11 @@ scoop bucket add tilt-dev https://github.com/tilt-dev/scoop-bucket
 scoop install tilt-dev/tilt
 ```
 
+## Optional apps
+
+- **Obsidian and Syncthing** — notes and device-to-device sync. Install commands, update
+  caveats, `.stignore`, backups and vault layout: [docs/obsidian-syncthing.md](docs/obsidian-syncthing.md).
+
 ## WSL and Docker
 
 Docker runs as Docker Engine inside WSL (Ubuntu-24.04), with nothing like Docker Desktop on the
