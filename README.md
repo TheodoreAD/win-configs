@@ -123,51 +123,57 @@ Set-Content -Path $weztermConfigFile -Value $weztermConfig -Encoding UTF8
 Write-Host "Config written to $weztermConfigFile"
 ```
 
-This is still under construction, skip it.
+### Git over SSH
+
+Git uses the Windows OpenSSH client and the Windows `ssh-agent` service. The agent
+stores added keys in the registry (encrypted per user with DPAPI), so they survive
+reboots: you type the passphrase once at `ssh-add` and never again on this machine.
+
+Git for Windows bundles its own (MSYS) `ssh.exe`, which only knows how to reach an
+agent through a Unix socket (`SSH_AUTH_SOCK`). The Windows agent listens on the named
+pipe `\\.\pipe\openssh-ssh-agent`, which only Windows OpenSSH can talk to, so git must
+be pointed at it with `core.sshCommand`. Changing PATH doesn't help: git prepends its
+own `usr\bin` internally, so it always finds the bundled `ssh.exe` first.
+
+In an **admin** PowerShell, enable and start the agent service:
 
 ```shell
-TODO: make ssh password persist across restarts, or at least across terminal sessions.
-# ============================================================================
-#                                  SSH Agent
-# ============================================================================
-scoop install versions/putty-cac
-$SshAgentProfileBlock = @"
-
-# SSH Agent via ssh-pageant + Pageant bridge
-$GitBin     = Join-Path (scoop prefix git) "usr\bin"
-$SshPageant = Join-Path $GitBin "ssh-pageant.exe"
-$GitSshAdd  = Join-Path $GitBin "ssh-add.exe"
-$PageantCmd = Get-Command pageant -ErrorAction SilentlyContinue
-$PageantExe = if ($_PageantCmd) { $_PageantCmd.Source } else { $null }
-#$SshPageantSock = "$env:TEMP\ssh-pageant.sock"
-$SshPageantSock = "/tmp/ssh-pageant.sock"
-if ($PageantExe -and -not (Get-Process pageant -ErrorAction SilentlyContinue)) {
-    $SshKey = Get-ChildItem "$env:USERPROFILE\.ssh" -File |
-        Where-Object { $_.Extension -notin ".pub",".bak",".ppk" -and $_.Name -notmatch "known_hosts|config|authorized_keys" } |
-        Sort-Object LastWriteTime -Descending |
-        Select-Object -First 1 -ExpandProperty FullName
-    $PpkKey = [System.IO.Path]::ChangeExtension($SshKey, ".ppk")
-    $KeyArg = if (Test-Path $PpkKey) { $PpkKey } else { $SshKey }
-    if (-not (Get-Process ssh-pageant -ErrorAction SilentlyContinue)) {
-        $_Bash = Join-Path (scoop prefix git) "bin\bash.exe"
-        & $_Bash -c "rm -f $SshPageantSock && ssh-pageant -a $SshPageantSock -q &"
-        Start-Sleep -Milliseconds 600
-    }
-}
-if (-not (Get-Process ssh-pageant -ErrorAction SilentlyContinue)) {
-    & $SshPageant -a $SshPageantSock -r -q 2>&1 | Out-Null
-}
-$env:SSH_AUTH_SOCK = $SshPageantSock 
-
-"@
-$ProfileContent = [string](Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue)
-$ProfileContent = $ProfileContent -replace "(?s)\r?\n# SSH Agent.*$", ""
-Set-Content $PROFILE $ProfileContent.TrimEnd()
-Add-Content $PROFILE $SshAgentProfileBlock
-Write-Host "SSH agent block updated in $PROFILE"
-
-& $GitSshAdd -l
+Set-Service ssh-agent -StartupType Automatic
+Start-Service ssh-agent
 ```
+
+In a normal PowerShell:
+
+```shell
+# ============================================================================
+#                                Git over SSH
+# ============================================================================
+$OpenSsh = "C:\Windows\System32\OpenSSH"
+# One key per machine, named after the computer: a PC called MY-PC gets
+# id_ed25519_my_pc, and the GitHub key title is the computer name
+$KeyName = "id_ed25519_" + $env:COMPUTERNAME.ToLower().Replace("-", "_")
+$KeyPath = "$HOME\.ssh\$KeyName"
+# Generate the key (set a passphrase when prompted)
+if (!(Test-Path $KeyPath)) {
+    & "$OpenSsh\ssh-keygen.exe" -t ed25519 -C "$env:USERNAME@$env:COMPUTERNAME" -f $KeyPath
+}
+# Add it to the agent (asks for the passphrase once, persists across reboots)
+& "$OpenSsh\ssh-add.exe" $KeyPath
+& "$OpenSsh\ssh-add.exe" -l
+# Make git use Windows OpenSSH, which can reach the agent
+git config --global core.sshCommand C:/Windows/System32/OpenSSH/ssh.exe
+# Install ssh/config from this repo (github.com -> this machine's key, plus
+# global defaults), backing up any existing config to config.bak
+$SshConfig = "$HOME\.ssh\config"
+if (Test-Path $SshConfig) { Copy-Item $SshConfig "$SshConfig.bak" -Force }
+(Get-Content .\ssh\config -Raw).Replace("__KEY_NAME__", $KeyName) |
+    Set-Content $SshConfig -NoNewline
+# Check: core.sshCommand set, agent running with the key loaded
+git config --global --get core.sshCommand
+Get-Service ssh-agent
+```
+
+The public key is uploaded to GitHub in the GitHub CLI step below.
 
 Continue installing tools:
 
@@ -176,9 +182,18 @@ Continue installing tools:
 #                                  GitHub CLI
 # ============================================================================
 scoop install main/gh
-# TODO: create SSH key, update in .ssh/config, ensure password isn't required every time etc
-# WARNINGL: only do this after you have the SSH key
+# Do this after the "Git over SSH" step; choose SSH as the git protocol
 gh auth login
+# Upload this machine's key (skip if gh auth login already uploaded it)
+$KeyName = "id_ed25519_" + $env:COMPUTERNAME.ToLower().Replace("-", "_")
+gh ssh-key add "$HOME\.ssh\$KeyName.pub" --title $env:COMPUTERNAME
+# Verify: should print "Hi <username>! You've successfully authenticated..."
+# (exit code 1 is normal, GitHub has no shell access)
+ssh -T git@github.com
+# Make gh clone over SSH (gh auth login sets this if you picked SSH)
+gh config set git_protocol ssh
+# Switch an existing HTTPS clone to SSH, then test with git fetch / git push:
+#   git remote set-url origin git@github.com:<user>/<repo>.git
 # ============================================================================
 #                                 Python & UV
 # ============================================================================

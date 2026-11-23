@@ -1,0 +1,21 @@
+# ~/.ssh/config template. The README's "Git over SSH" step installs it, replacing
+# __KEY_NAME__ with this machine's key name (id_ed25519_<computer name>).
+# SSH uses the first value it finds for each setting, so specific Host sections
+# must come before "Host *".
+
+Host github.com
+    User git
+    IdentityFile ~/.ssh/__KEY_NAME__
+    IdentitiesOnly yes
+
+# Global defaults (also apply to the hosts above, for settings they don't set)
+Host *
+    # Add keys to ssh-agent on first use; ignored by old ssh versions
+    IgnoreUnknown AddKeysToAgent
+    AddKeysToAgent yes
+    PreferredAuthentications publickey,keyboard-interactive,password,hostbased,gssapi-with-mic
+    # Only offer keys configured for the host, not every key in the agent
+    IdentitiesOnly yes
+    # Send a keepalive every 300 seconds; drop the connection after 3 missed replies
+    ServerAliveInterval 300
+    ServerAliveCountMax 3
