@@ -2,7 +2,7 @@
 
 Configurations for all manner of Windows system and software
 
-## Development tools
+## Development tools installation
 
 IMPORTANT: It's best to download the repo as a zip file and run the commands
 from the root of the repo. Some commands depend on the files in the repo.
@@ -11,7 +11,6 @@ You can skip some scripts and simply copy and paste the contents of the various 
 if you don't want to download the repo.
 
 Run this before any other section below:
-
 ```shell
 # ============================================================================
 #                                Prerequisites
@@ -41,23 +40,17 @@ if ($newEntries.Count -gt 0) {
 } else {
     Write-Host "All paths already in PATH."
 }
-if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Force -Path $PROFILE | Out-Null }
-param([string]$SourceFile = ".\scripts\profile.ps1")
-$blockContent = Get-Content $SourceFile -Raw
-$profileText = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
-if ($profileText -match [regex]::Escape("# Power User Profile")) {
-    $pattern = '(?m)^# ={10,}\r?\n# Power User Profile\r?\n# ={10,}[\s\S]*?^# ={10,}[ \t]*(\r?\n|$)'
-    $newText = [regex]::Replace($profileText, $pattern, { $blockContent })
-    Set-Content $PROFILE -Value $newText -NoNewline
-    Write-Host "✅ Power User Profile block replaced in: $PROFILE"
-} else {
-    Add-Content $PROFILE -Value "$([Environment]::NewLine)$blockContent"
-    Write-Host "✅ Power User Profile block added to: $PROFILE"
-}
-
+# PowerShell 7: the shell for everything from here on (terminals, Herdr, Claude Code).
+# Its profile is separate from Windows PowerShell 5.1's:
+#   5.1: Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1
+#   7:   Documents\PowerShell\Microsoft.PowerShell_profile.ps1
+# NOTE: update pwsh itself from powershell.exe (`scoop update pwsh`), not from inside pwsh.
+scoop install main/pwsh
 ```
 
-Run the rest after testing `l`, `d`, and `where` work.
+Open a new **PowerShell 7** terminal (`pwsh`, from the Start menu or by typing `pwsh`) and run
+everything below from there, from the root of this repo. This block installs what the profile
+needs, then the profile itself:
 
 ```shell
 # ============================================================================
@@ -84,21 +77,51 @@ scoop install main/oh-my-posh
 # TODO: test more prompts from https://ohmyposh.dev/docs/themes
 # current theme: if_tea
 # other tested themes: atomic powerlevel10k_modern
-$additions = @"
-
-# Oh My Posh
-oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\if_tea.omp.json" | Invoke-Expression
-
-# Terminal Icons
-Import-Module Terminal-Icons
-
-"@
-if (!(Select-String -Path $PROFILE -Pattern "oh-my-posh" -Quiet)) {
-    Add-Content -Path $PROFILE -Value $additions
-    Write-Host "Profile updated successfully." -ForegroundColor Green
+# Terminal-Icons must be installed from pwsh so it lands in PowerShell 7's own
+# module folder (Documents\PowerShell\Modules).
+# ============================================================================
+#                                    fnm
+# ============================================================================
+# fnm (Fast Node Manager) installs Node versions side by side; Node itself is
+# installed further down. The profile runs `fnm env --use-on-cd`.
+scoop install main/fnm
+# ============================================================================
+#                              PowerShell profile
+# ============================================================================
+# Install scripts/profile.ps1 as the "Power User Profile" block of the PowerShell 7
+# profile (Documents\PowerShell\Microsoft.PowerShell_profile.ps1).
+if (!(Test-Path $PROFILE)) { New-Item -ItemType File -Force -Path $PROFILE | Out-Null }
+$blockContent = Get-Content .\scripts\profile.ps1 -Raw
+$profileText = Get-Content $PROFILE -Raw -ErrorAction SilentlyContinue
+if ($profileText -match [regex]::Escape("# Power User Profile")) {
+    $pattern = '(?m)^# ={10,}\r?\n# Power User Profile\r?\n# ={10,}[\s\S]*?^# ={10,}[ \t]*(\r?\n|$)'
+    $newText = [regex]::Replace($profileText, $pattern, { $blockContent })
+    Set-Content $PROFILE -Value $newText -NoNewline
+    Write-Host "✅ Power User Profile block replaced in: $PROFILE"
 } else {
-    Write-Host "Oh My Posh already configured in profile. Skipping." -ForegroundColor Yellow
+    Add-Content $PROFILE -Value "$([Environment]::NewLine)$blockContent"
+    Write-Host "✅ Power User Profile block added to: $PROFILE"
 }
+# Windows PowerShell 5.1 has its own profile; make it load this one, so there's a
+# single file to maintain (the old 5.1 profile is kept as .bak). On a fresh machine
+# Terminal-Icons exists only for PowerShell 7, so 5.1 reports it missing; 5.1 isn't
+# used day to day, so that's left as is.
+$Docs = [Environment]::GetFolderPath('MyDocuments')
+$Ps51Profile = "$Docs\WindowsPowerShell\Microsoft.PowerShell_profile.ps1"
+New-Item -ItemType Directory -Force (Split-Path $Ps51Profile) | Out-Null
+if (Test-Path $Ps51Profile) { Copy-Item $Ps51Profile "$Ps51Profile.bak" -Force }
+Set-Content $Ps51Profile -Value @'
+# Windows PowerShell 5.1 loads the PowerShell 7 profile, so there's one file to maintain.
+. (Join-Path ([Environment]::GetFolderPath('MyDocuments')) 'PowerShell\Microsoft.PowerShell_profile.ps1')
+'@
+```
+
+Open a new `pwsh` tab: the Oh My Posh prompt should show icons, and `l` (GNU long listing) and
+`d` (listing with icons) should work. The profile keeps PowerShell's built-in aliases (`ls`,
+`cat`, `where`, `sort` are cmdlets); GNU tools are `ls.exe`, `cat.exe` and so on. See
+[docs/claude-windows-tools.md](docs/claude-windows-tools.md) for why. Then continue:
+
+```shell
 # ============================================================================
 #                                   Wezterm
 # ============================================================================
@@ -219,6 +242,17 @@ uv python install 3.12
 uv python install 3.13
 uv python install 3.14 --default
 uv tool install invoke --with python-dotenv
+# ============================================================================
+#                              Node.js & npm (via fnm)
+# ============================================================================
+# fnm (installed with the profile above) switches to a project's Node version on cd
+# when it has a .nvmrc or .node-version file. No nvm needed: the original doesn't
+# run on Windows, and fnm reads the same .nvmrc files (`fnm use` where docs say
+# `nvm use`).
+fnm install --lts
+fnm use lts-latest
+fnm default lts-latest
+# To update later: fnm install --lts; fnm default lts-latest
 # ============================================================================
 #                                CLI Utilities
 # ============================================================================
