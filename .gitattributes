@@ -1,0 +1,34 @@
+# Line endings: the repo stores LF, and text files are checked out as LF on every OS too.
+# This overrides Git for Windows' core.autocrlf=true for this repo. PowerShell 5.1 and 7,
+# VS Code and Notepad all handle LF, and scripts copied into WSL or onto Linux keep working
+# (a CRLF shebang line breaks a shell script). Same rules as git/gitattributes.
+* text=auto eol=lf
+
+# Scripts that run on Linux or inside WSL: LF even if the rule above is ever relaxed
+*.sh text eol=lf
+*.py text eol=lf
+
+# Windows batch files can misbehave with LF: keep them CRLF
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# Binary: never convert or diff as text
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.webp binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.7z   binary
+*.mp3  binary
+*.mp4  binary
+*.mov  binary
+*.ttf  binary
+*.otf  binary
+*.woff binary
+*.woff2 binary
+*.docx binary
+*.xlsx binary
+*.pptx binary
