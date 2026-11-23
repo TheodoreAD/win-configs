@@ -1,0 +1,7 @@
+schema_version: "1.1"
+name: doctor-on-windows-host
+expected_outcome: |
+  Claude inspects this Windows machine without changing anything and reports what blocks the
+  Linux controller from reaching it: the OpenSSH server isn't installed, no authorized key is in
+  place, the WSL bridge is missing and the WSL default user is root. Each problem comes with a
+  concrete fix (admin commands where needed), and it says some checks need an elevated shell.

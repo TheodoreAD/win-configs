@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: windows-host-walkthrough
+expected_outcome: |
+  windows-steps.md is a followable admin walkthrough for the Windows host only: install and start
+  OpenSSH server, limit the firewall rule to 192.168.1.20, turn off password logins in
+  sshd_config (above the Match block), install the Linux machine's public key in
+  administrators_authorized_keys (this account is an admin) with a locked-down ACL and a
+  restricted key line, and verify. Nothing on Windows gets a key that opens Linux.

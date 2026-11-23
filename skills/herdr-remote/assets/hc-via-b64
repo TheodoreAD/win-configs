@@ -1,0 +1,15 @@
+#!/bin/sh
+# hc-via-b64: runs inside WSL. Install as /usr/local/bin/hc-via-b64 (mode 755).
+#
+# Herdr on the Linux controller reaches WSL as: ssh winbox -> wsl.exe -> this script.
+# Windows sshd hands the command to cmd.exe, which mangles quotes and pipes, so the
+# controller's wrapper (herdr-via-wsl) sends the shell line base64-encoded as one plain
+# argument, and this script decodes and runs it.
+#
+# `eval` (not `| sh`) keeps stdin/stdout attached to ssh: hc speaks its protocol over them.
+set -eu
+[ $# -eq 1 ] || { echo "usage: hc-via-b64 <base64 shell line>" >&2; exit 2; }
+PATH="$HOME/.local/bin:$PATH"
+export PATH
+line=$(printf '%s' "$1" | base64 -d)
+eval "$line"

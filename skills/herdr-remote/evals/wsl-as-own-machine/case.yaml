@@ -1,0 +1,8 @@
+schema_version: "1.1"
+name: wsl-as-own-machine
+expected_outcome: |
+  wsl-plan.md gives a working way to add the WSL distro as a separate Herdr desktop-app machine
+  reached through the existing winbox SSH connection and wsl.exe (hc machine add --via ...),
+  without an SSH server or open port inside WSL. It accounts for Windows sshd running commands
+  through cmd.exe (quoting), says what to install inside WSL and on Linux, uses the real distro
+  name, and flags that the distro's default user is root.
