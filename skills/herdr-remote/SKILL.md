@@ -48,8 +48,10 @@ the OS, uses only the standard library, and is read-only. Run it on Windows with
   - On Windows: sshd state, who is connected right now, the Herdr core, whether WSL is
     running (it doesn't start WSL).
   - On Linux: the Herdr machines, plus a probe of each one.
-- **`key-line KEY.pub --from <Linux IP>`**: run on Linux. It prints the restricted
-  `authorized_keys` line to install on Windows, and refuses private keys.
+- **`key-line KEY.pub --from <Linux IP> [--windows]`**: run on Linux. It prints the
+  restricted `authorized_keys` line, and refuses private keys. With `--windows` it prints a
+  complete admin PowerShell block (5.1 or 7) that installs the line on Windows and locks
+  the file down, ready to paste.
 
 Some Windows checks only work from an elevated shell, because the key file is readable
 only by Administrators. Claude Code's shell isn't elevated, and the `!` prefix doesn't
@@ -62,6 +64,18 @@ FAILs, then the WARNs, and give the fix for each in plain words. Each fix names 
 reference file and step to follow.
 
 ## Setting it up
+
+The user may come to you on either machine, partway through, in a new session that
+remembers nothing. Don't ask where they are: run `doctor` on the machine you're on (it
+detects Windows or Linux), and the first FAIL tells you the phase and step. Then guide the
+steps for *this* machine. Discover what you can (this machine's IP, existing keys and
+config, `hc machine ls`). Ask only for what lives on the other machine: on Linux, the
+Windows IP, account name and host key fingerprint, which the Windows doctor's "For the
+Linux side" line shows.
+
+Anything that must cross between the machines should be a single block the user can move
+as-is. The only such block is the key-install command from
+`key-line ... --windows` (`references/linux-controller.md`, step 4).
 
 Work in this order, and run `doctor` on the machine you just changed after each phase:
 

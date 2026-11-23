@@ -74,7 +74,9 @@ Restart-Service sshd
 
 ## 5. Install the Linux machine's public key
 
-The key line comes from Linux (`references/linux-controller.md`, steps 2–3). It looks like
+The easy way: on Linux, `key-line ... --windows` (`references/linux-controller.md`,
+step 4) prints this whole step as one block, with the key already inside. Paste that into
+an admin window and skip the rest of this step. By hand, the key line looks like
 `from="<LINUX_IP>",no-port-forwarding,no-agent-forwarding,no-x11-forwarding,no-pty ssh-ed25519 AAAA... herdr linux->winbox`.
 
 If the Windows account is in **Administrators** (check with

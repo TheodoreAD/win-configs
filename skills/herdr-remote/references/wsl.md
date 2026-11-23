@@ -53,11 +53,10 @@ has CRLF, fix it with `sed -i 's/\r$//' /usr/local/bin/hc-via-b64`.
 
 ## 2. Install the wrapper on Linux
 
-Copy `assets/herdr-via-wsl` to `~/.local/bin/herdr-via-wsl` on the Linux controller, from a
-clone of this repo or by pasting it; it's short. Then:
+The skill installed on Linux ships it, so install it from there. Nothing to copy by hand:
 
 ```bash
-chmod 755 ~/.local/bin/herdr-via-wsl
+install -D -m 755 <skill>/assets/herdr-via-wsl ~/.local/bin/herdr-via-wsl
 ```
 
 ## 3. Test the path by hand

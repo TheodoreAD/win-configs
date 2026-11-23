@@ -1,13 +1,33 @@
 # Phase 2: Linux controller
 
-Below, `<WINDOWS_IP>` is the Windows machine's reserved LAN IP, `<LINUX_IP>` is this
-machine's, and `<WINDOWS_USER>` is the Windows account name (`$env:USERNAME` there).
+Claude runs these steps on the Linux machine itself, and asks before each one that changes
+something. The user only has to answer two questions, and carry one block of text to
+Windows (step 4).
+
+## 0. Gather the facts
+
+Discover these instead of asking for them:
+
+```bash
+ip -4 route get 1.1.1.1 | awk '{for(i=1;i<NF;i++) if($i=="src") print $(i+1)}'   # this machine's LAN IP
+ls ~/.ssh/id_ed25519_winbox* 2>/dev/null                                         # key already made?
+ssh -G winbox | grep -Ei '^(hostname|user|identityfile) '                        # config entry already there?
+command -v hc && hc --version && hc machine ls                                   # Herdr installed? machines?
+```
+
+`ssh -G` prints `hostname winbox` when there's no entry yet.
+
+Ask the user only for what Linux can't know. All three are shown on the Windows side, in
+the doctor's "For the Linux side" line (`herdr-remote.py doctor` on Windows):
+
+- **Windows LAN IP**: `<WINDOWS_IP>`
+- **Windows account name**: `<WINDOWS_USER>`
+- **Host key fingerprint**: only needed in step 5, to verify the first connect.
 
 ## 1. Herdr desktop app
 
-Install it from [herdr.dev](https://herdr.dev/) and start it once. Check that `hc --version` works
-in a terminal. Remote machines are added with `hc machine add`. In the app, Settings →
-Machines → Add machine does the same for named `~/.ssh/config` hosts.
+If `hc` is missing, install the app from [herdr.dev](https://herdr.dev/) and start it once.
+`hc --version` should then work in a terminal.
 
 ## 2. A key used only for this
 
@@ -15,22 +35,20 @@ Machines → Add machine does the same for named `~/.ssh/config` hosts.
 ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_winbox -C "herdr linux->winbox"
 ```
 
-Set a passphrase, then load the key into your desktop's ssh-agent (`ssh-add
-~/.ssh/id_ed25519_winbox`; GNOME Keyring and KDE Wallet can unlock it at login). Herdr
-connects in the background and can't type a passphrase. Without a passphrase, anyone who
-can read the file gets into Windows. That's acceptable only because the key opens nothing
-but the weaker machine, and only from this IP.
+`ssh-keygen` asks for a passphrase, so the user types it in their own terminal. Suggest
+the `!` prefix in Claude Code, or a separate terminal.
 
-## 3. The restricted key line for Windows
+Then load the key into the desktop's ssh-agent with `ssh-add ~/.ssh/id_ed25519_winbox`.
+GNOME Keyring and KDE Wallet can unlock it at login. Herdr connects in the background and
+can't type a passphrase.
 
-```bash
-python3 <skill>/scripts/herdr-remote.py key-line ~/.ssh/id_ed25519_winbox.pub --from <LINUX_IP>
-```
+Without a passphrase, anyone who can read the file gets into Windows. That's acceptable
+only because the key opens nothing but the weaker machine, and only from this IP. Never
+print, copy or move the private key; only the `.pub` goes to Windows.
 
-Send that one line to Windows by any route: paste, USB, a note. A public key isn't secret.
-Install it with `references/windows-host.md` step 5.
+## 3. `~/.ssh/config`
 
-## 4. `~/.ssh/config`
+Add this, above any `Host *` block, because SSH uses the first value it finds:
 
 ```
 Host winbox
@@ -42,17 +60,39 @@ Host winbox
     ForwardX11 no
 ```
 
-Put it above any `Host *` block: SSH uses the first value it finds for each setting.
+## 4. The one thing to carry to Windows
+
+```bash
+python3 <skill>/scripts/herdr-remote.py key-line ~/.ssh/id_ed25519_winbox.pub --from <LINUX_IP> --windows
+```
+
+This prints a complete block for an **admin PowerShell window on Windows**, with the
+restricted key already inside it. Save it to a file the user can move easily:
+
+```bash
+python3 <skill>/scripts/herdr-remote.py key-line ~/.ssh/id_ed25519_winbox.pub --from <LINUX_IP> --windows > ~/winbox-install-key.ps1.txt
+```
+
+The user moves it to Windows by any route (a note, a chat to themselves, a USB stick). It
+only holds a public key, which isn't secret. On Windows they paste it into an admin
+PowerShell window (5.1 or 7). It works if `icacls` says `Successfully processed 1 files`.
+If Claude runs on Windows too, it can check the result there with `doctor`.
 
 ## 5. First connect
+
+```bash
+ssh-keyscan -t ed25519 <WINDOWS_IP> 2>/dev/null | ssh-keygen -lf -
+```
+
+Ask the user to compare this fingerprint with the "host key" in the Windows doctor's "For
+the Linux side" line. Only if they match:
 
 ```bash
 ssh winbox hc --version
 ```
 
-SSH asks you to confirm the host key. Compare the fingerprint with the one Windows
-`doctor` printed, or `references/windows-host.md` step 6, and answer `yes` only if they
-match. You should then see `hc x.y.z`, with no password prompt.
+Answer `yes` to the host key prompt. It should print `hc x.y.z`, with no password prompt.
+If it fails, read `troubleshooting.md` before changing anything.
 
 ## 6. Add the machine to Herdr
 
@@ -61,7 +101,7 @@ hc machine add winbox
 ```
 
 - **Older `hc` on Windows**: if Windows has an older `hc` than this machine, run
-  `hc machine update winbox` later. It copies this `hc` there; its terminals keep running.
+  `hc machine update winbox`. It copies this `hc` there; its terminals keep running.
 - **Disconnects**: Windows terminals live in the Windows core, so they survive a
   disconnect.
 

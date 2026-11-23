@@ -433,10 +433,31 @@ def windows_doctor(r: Report, args) -> None:
         r.add(INFO, "This machine's IPv4", "; ".join(addrs) or "none",)
     except RuntimeError:
         pass
-    for pub in sorted(WIN_SSH_DIR.glob("ssh_host_*_key.pub")) if WIN_SSH_DIR.exists() else []:
-        code, out, _ = run(["ssh-keygen", "-lf", str(pub)])
-        if code == 0:
-            r.add(INFO, "Host key", out + "  (compare on the first `ssh` from Linux)")
+    # The host key files are admin-only; asking the running sshd over loopback works unelevated.
+    fingerprints = []
+    if svc is not None:
+        code, out, _ = run(["ssh-keyscan", "-t", "ed25519", "127.0.0.1"], 15)
+        if code == 0 and out:
+            import tempfile
+            with tempfile.NamedTemporaryFile("w", suffix=".pub", delete=False) as tmp:
+                tmp.write(out + "\n")
+            code, fp, _ = run(["ssh-keygen", "-lf", tmp.name])
+            os.unlink(tmp.name)
+            if code == 0:
+                fingerprints.append(fp)
+                r.add(INFO, "Host key", fp.replace("127.0.0.1 ", "") + "  (compare on the first `ssh` from Linux)")
+    try:
+        lan_ips = as_list(ps_json(
+            "Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.PrefixOrigin -in 'Dhcp','Manual' -and "
+            "$_.InterfaceAlias -notmatch 'vEthernet|VPN|Nord|Tailscale|ZeroTier|Loopback' } "
+            "| ForEach-Object { $_.IPAddress }"))
+    except RuntimeError:
+        lan_ips = []
+    ed25519 = next((f.split()[1] for f in fingerprints if "ED25519" in f), None)
+    r.add(INFO, "For the Linux side",
+          f"HostName {' or '.join(lan_ips) or '<this PC LAN IP>'}, User {user}"
+          + (f", host key {ed25519}" if ed25519 else ", host key: start sshd first")
+          + "  (Claude on Linux asks for these; read them off here)")
 
     # --- Herdr core
     hc = shutil.which("hc")
@@ -537,8 +558,8 @@ def ssh_batch(host: str, remote: list[str], extra: list[str] | None = None, time
 def explain_ssh_error(err: str) -> str:
     e = err.lower()
     if "permission denied" in e:
-        return ("key refused: check the key is in administrators_authorized_keys with locked-down ACL, "
-                "from= matches this machine's IP, AllowUsers is lowercase (run doctor on Windows)")
+        return ("key refused: not installed on Windows yet (linux-controller.md, step 4), or "
+                "from=/AllowUsers don't match this machine's IP (run doctor on Windows)")
     if "host key verification failed" in e:
         return "first connect interactively (`ssh winbox hc --version`) and compare the host key with Windows doctor"
     if "timed out" in e or "no route" in e or "refused" in e:
@@ -573,11 +594,20 @@ def linux_doctor(r: Report, args) -> None:
     else:
         r.add(FAIL, "hc on PATH", "not found", "install the Herdr desktop app (references/linux-controller.md, step 1)")
 
+    code, out, _ = run(["ip", "-4", "route", "get", "1.1.1.1"])
+    m = re.search(r"\bsrc (\S+)", out)
+    if m:
+        r.add(INFO, "This machine's LAN IP", f"{m.group(1)}  (the --from value for key-line; reserve it on the router)")
+
     s = ssh_settings(host)
     hostname = (s.get("hostname") or [host])[0]
     if not s or hostname == host:
+        default_key = Path.home() / ".ssh" / "id_ed25519_winbox"
+        if not default_key.exists():
+            r.add(FAIL, "Key file", f"{default_key} missing", "references/linux-controller.md, step 2")
         r.add(FAIL, f"~/.ssh/config Host {host}", "no entry with a HostName",
-              "references/linux-controller.md, step 4")
+              "references/linux-controller.md, step 3 (needs the Windows IP and account name "
+              "from the Windows doctor's 'For the Linux side' line)")
         return
     user = (s.get("user") or ["?"])[0]
     port = int((s.get("port") or ["22"])[0])
@@ -711,7 +741,26 @@ def key_line(args) -> int:
         except ValueError:
             print(f"not an IP address or network: {ip}", file=sys.stderr)
             return 2
-    print(f'from="{",".join(ips)}",{",".join(RESTRICTIONS)} {text}')
+    line = f'from="{",".join(ips)}",{",".join(RESTRICTIONS)} {text}'
+    if not args.windows:
+        print(line)
+        return 0
+    # A complete block for an admin PowerShell window on Windows (5.1 or 7). Single quotes
+    # inside the key comment would end the PowerShell string, so double them.
+    ps_line = line.replace("'", "''")
+    blob = text.split()[1]  # the base64 key itself, to spot an already-installed key
+    print(f"""# Paste into an ADMIN PowerShell window on Windows (Windows PowerShell 5.1 or PowerShell 7).
+# Installs the Linux controller's public key, restricted to {', '.join(ips)}, for an
+# account in Administrators (sshd reads only this file for admins), then locks the file down.
+$f = 'C:\\ProgramData\\ssh\\administrators_authorized_keys'
+$line = '{ps_line}'
+if ((Test-Path $f) -and (Select-String -Path $f -SimpleMatch '{blob}' -Quiet)) {{
+    Write-Host 'This key is already installed.'
+}} else {{
+    [IO.File]::AppendAllText($f, $line + "`n", (New-Object Text.UTF8Encoding $false))
+}}
+icacls.exe $f /inheritance:r /grant 'Administrators:F' /grant 'SYSTEM:F'
+Write-Host 'Done if icacls says: Successfully processed 1 files.'""")
     return 0
 
 
@@ -736,6 +785,8 @@ def main() -> int:
     kp.add_argument("pubkey", help="the .pub file, e.g. ~/.ssh/id_ed25519_winbox.pub")
     kp.add_argument("--from", dest="from_ips", nargs="+", required=True, metavar="IP",
                     help="the Linux controller's LAN IP(s)")
+    kp.add_argument("--windows", action="store_true",
+                    help="print a complete admin PowerShell block that installs the line on Windows")
     args = p.parse_args()
 
     if args.cmd == "key-line":
