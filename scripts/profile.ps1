@@ -7,12 +7,13 @@ oh-my-posh init pwsh --config "$env:POSH_THEMES_PATH\if_tea.omp.json" | Invoke-E
 # Terminal Icons
 Import-Module Terminal-Icons
 
-# Remove PowerShell aliases that shadow real tools
-@('curl','wget','where','ls','cat','cp','mv','rm','echo','kill','ps','sort','tee') |
-    ForEach-Object { Remove-Item "Alias:$_" -Force -ErrorAction SilentlyContinue }
+# PowerShell's built-in aliases (ls, cat, rm, where, sort, ...) are kept as-is.
+# GNU tools are still available explicitly: ls.exe, cat.exe, rm.exe, ...
 
 # Aliases
-function l { ls -Alhg --no-group --time-style=long-iso $args }
+# Improved ls
+function l { ls.exe -l --almost-all --human-readable --group-directories-first --no-group --color=auto --time-style=long-iso $args }
+# Improved dir
 function d {
     $esc = [char]27
     $reset = "${esc}[0m"
@@ -40,4 +41,7 @@ function d {
 $WSL_DISTRO = "Ubuntu-24.04"
 function docker { wsl -d $WSL_DISTRO docker @Args }
 function docker-compose { wsl -d $WSL_DISTRO docker compose @Args }
+
+# fnm (Fast Node Manager)
+fnm env --use-on-cd --shell powershell | Out-String | Invoke-Expression
 # ============================================================================
