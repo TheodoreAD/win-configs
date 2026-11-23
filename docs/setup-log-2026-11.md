@@ -131,6 +131,11 @@ What was changed on the first machine set up this way, during Claude Code sessio
   passwordless sudo (a WSL sudo password isn't a boundary: `wsl -u root` works from Windows
   without one) and set as the default via the registry's `DefaultUid`, leaving
   `/etc/wsl.conf` to the Linux setup repo.
+- **WSL reinstalled with a script.** The distro (only default files inside) was removed and
+  `scripts/setup-wsl.py` now does the whole Windows-side setup: install Ubuntu 24.04 with
+  `--no-launch`, create `dev` with passwordless sudo, set `DefaultUid`, and clear `RunOOBE` so
+  Ubuntu's first-run script doesn't prompt for a user, edit `/etc/wsl.conf` or register its font
+  in Windows. Tested: removal, fresh install, rerun, first interactive login, `--check`.
 - **Network profile reviewed:** the home LAN is on Public but File and Printer Sharing is on for
   Public and a `Users` share exists; the network printer (IPP) doesn't need either. Ideal setup
   recorded in `docs/plan-apps-and-settings.md`; nothing changed yet.
