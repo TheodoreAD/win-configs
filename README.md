@@ -269,6 +269,8 @@ scoop install main/fd
 scoop install main/jq
 scoop install main/ripgrep
 scoop install main/curl
+# Go: needed to build Herdr's Branch PR helper (see herdr/README.md)
+scoop install main/go
 # Claude Code, native installer (installs to ~\.local\bin\claude.exe, which the
 # Prerequisites put on PATH; updates itself in the background)
 Invoke-RestMethod https://claude.ai/install.ps1 | Invoke-Expression
@@ -405,3 +407,9 @@ if (!(Select-String -Path $PROFILE -Pattern "Docker WSL2 bridge" -Quiet)) {
 Global `CLAUDE.md`, `settings.json` (PowerShell 7 as Claude's shell, status line) and the status
 line script: see [claude/README.md](claude/README.md). How Claude's shell relates to your
 profile and the Unix tools: [docs/claude-windows-tools.md](docs/claude-windows-tools.md).
+
+## Herdr
+
+The Herdr desktop app (terminals and agents), its settings, and the Estro layout with munza's
+mods and a GitHub issues panel, pinned to security-reviewed commits: see
+[herdr/README.md](herdr/README.md). Needs `pwsh`, the Nerd Fonts, `gh` and `go` from above.
