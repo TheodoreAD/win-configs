@@ -58,24 +58,63 @@ How it works:
 - **Printing to a network printer is outgoing** (IPP/WSD to the printer), so it needs neither
   File and Printer Sharing nor Private. Those are for sharing this PC's own folders or printers.
 
-State on the first machine (2026-11-24): the home LAN is on Public, but File and Printer Sharing
-is enabled for Public, a share named `Users` exists, and some app rules exist only for Public
-(e.g. Syncthing) while others exist only for Private.
+State on the first machine (2026-11-24), origin unknown:
 
-Ideal setup, to decide and apply:
+- **Profile:** the home LAN adapter is on Public; the VPN adapter is on Private.
+- **Sharing:** File and Printer Sharing is enabled for Public, and a share named `Users`
+  exposes all of `C:\Users` on the network. The network printer is connected over IPP and
+  doesn't depend on either.
+- **Syncthing:** its two firewall rules (TCP and UDP, Public only) allow the program at
+  `scoop\apps\syncthing\2.0.15\syncthing.exe`. Scoop updated Syncthing to a new version
+  folder, so the rules no longer match the running program: incoming LAN connections are
+  blocked and Syncthing most likely falls back to relays (slower, but still encrypted).
+- **Other app rules** were created for whichever profile was active when "Allow" was clicked,
+  so some apps are allowed only on Public and others only on Private.
 
-1. **Profile:** Private for the trusted home LAN (Windows' intended label; Network Discovery
-   helps find printers), Public for anything else. Keeping Public at home also works, as long
-   as the rules below are right.
-2. **File and Printer Sharing off** unless this PC really shares a folder or printer. Remove
-   unneeded shares first (`Get-SmbShare`, `Remove-SmbShare -Name <name>`), then, as admin:
-   `Disable-NetFirewallRule -DisplayGroup "File and Printer Sharing"`.
-3. **App rules that need the LAN** (Syncthing, remote access tools, the Herdr SSH rule) cover
-   the profile actually in use, ideally scoped to the LAN (`-RemoteAddress LocalSubnet`) or to
-   a specific IP. Check with:
-   `Get-NetFirewallRule -Direction Inbound -Action Allow -Enabled True | Select-Object DisplayName, Profile`.
-4. **Switch the profile** (admin):
-   `Set-NetConnectionProfile -InterfaceAlias <adapter> -NetworkCategory Private`.
+### Target
+
+- **Home LAN on Private**, anything else Public.
+- **No sharing from this PC**: no `Users` share, File and Printer Sharing rules off. Printing
+  still works.
+- **Syncthing** allowed by port, not by program path (so scoop updates can't break it), only
+  from the local subnet: TCP/UDP 22000 (sync, including QUIC) and UDP 21027 (local
+  discovery).
+- **Every remaining inbound allow rule reviewed**: needed ones scoped to `LocalSubnet` or a
+  specific IP, the rest disabled.
+
+### Steps
+
+Run in an **admin** PowerShell 7. Check the adapter name first with `Get-NetConnectionProfile`.
+
+```shell
+# 1. Stop sharing C:\Users and turn off File and Printer Sharing (printing via IPP is unaffected)
+Remove-SmbShare -Name Users -Force
+Disable-NetFirewallRule -DisplayGroup "File and Printer Sharing"
+# 2. Home LAN -> Private (replace the adapter name)
+Set-NetConnectionProfile -InterfaceAlias "<home LAN adapter>" -NetworkCategory Private
+# 3. Syncthing: replace the program-path rules with port rules limited to the local subnet
+Get-NetFirewallRule -DisplayName "syncthing.exe" | Remove-NetFirewallRule
+New-NetFirewallRule -DisplayName "Syncthing sync (TCP 22000)" -Direction Inbound -Action Allow `
+    -Protocol TCP -LocalPort 22000 -RemoteAddress LocalSubnet -Profile Private
+New-NetFirewallRule -DisplayName "Syncthing sync (UDP 22000, QUIC)" -Direction Inbound -Action Allow `
+    -Protocol UDP -LocalPort 22000 -RemoteAddress LocalSubnet -Profile Private
+New-NetFirewallRule -DisplayName "Syncthing discovery (UDP 21027)" -Direction Inbound -Action Allow `
+    -Protocol UDP -LocalPort 21027 -RemoteAddress LocalSubnet -Profile Private
+# 4. Review what else accepts incoming connections; disable what isn't needed
+#    (Disable-NetFirewallRule -DisplayName "<name>")
+Get-NetFirewallRule -Direction Inbound -Action Allow -Enabled True |
+    Where-Object { $_.DisplayGroup -notmatch 'Core Networking' } |
+    Sort-Object DisplayName | Select-Object DisplayName, Profile
+```
+
+Check afterwards:
+
+- **Syncthing:** in its web UI, remote devices on the LAN show a direct address (`tcp://` or
+  `quic://<LAN IP>:22000`) instead of `relay://`.
+- **Printing:** print a test page.
+- **Sharing:** `Get-SmbShare` lists only the built-in admin shares (`ADMIN$`, `C$`, `IPC$`).
+- **The Herdr SSH rule** from the `herdr-remote` skill uses all profiles scoped to the Linux
+  machine's IP, so it isn't affected by the profile switch.
 
 ## Remove superseded or useless installs
 
