@@ -16,7 +16,8 @@ Also in this repo:
   scoop, Windows settings and removing superseded installs
 - **[scripts/](scripts/)** — `profile.ps1` (the PowerShell profile block),
   `claude-session-extract.py` (recover what past Claude Code sessions did),
-  `check-readme-blocks.py` (check that the README's PowerShell blocks parse)
+  `check-readme-blocks.py` (check that the README's PowerShell blocks parse),
+  `stage-hunks.py` (stage only some of a file's changes, for one commit per change)
 
 ## Development tools installation
 
