@@ -377,3 +377,20 @@ profile and the Unix tools: [docs/claude-windows-tools.md](docs/claude-windows-t
 The Herdr desktop app (terminals and agents), its settings, and the Estro layout with munza's
 mods and a GitHub issues panel, pinned to security-reviewed commits: see
 [herdr/README.md](herdr/README.md). Needs `pwsh`, the Nerd Fonts, `gh` and `go` from above.
+
+## Git line endings
+
+Git for Windows ships `core.autocrlf=true` in its system config
+(`~\scoop\apps\git\current\etc\gitconfig`), so text files are checked out with CRLF and git
+warns "LF will be replaced by CRLF". For repos edited by Claude and synced elsewhere, add
+[git/gitattributes](git/gitattributes) as the repo's `.gitattributes`:
+
+```shell
+# from the root of the target repo; adjust the path to your win-configs clone
+Copy-Item "$HOME\projects\personal\win-configs\git\gitattributes" .\.gitattributes
+```
+
+It stores and checks out text as LF on every OS (overriding `core.autocrlf` for that repo only),
+keeps `.bat`/`.cmd` as CRLF, and marks images, PDFs, fonts, archives and Office files binary.
+Everything on Windows used here (VS Code, Notepad, Obsidian, PowerShell 5.1 and 7) handles LF.
+Existing CRLF files stay as they are on disk until git rewrites them, and won't show as changed.
