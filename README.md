@@ -7,6 +7,8 @@ Also in this repo:
 - **[claude/](claude/README.md)** — Claude Code global config and status line
 - **[herdr/](herdr/README.md)** — Herdr desktop app settings, Estro layout and mods
 - **[ssh/](ssh/config)** — `~/.ssh/config` template (see "Git over SSH" below)
+- **[skills/](skills/README.md)** — agent skills authored here, installed with `npx skills`
+  (Herdr remote setup with doctor/status)
 - **[git/gitattributes](git/gitattributes)** — line-ending template for repos
 - **[docs/claude-windows-tools.md](docs/claude-windows-tools.md)** — Claude Code's shell, the
   PowerShell profile, aliases and PATH order

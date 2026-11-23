@@ -1,6 +1,8 @@
 # Herdr desktop app
 
-Setup for the Herdr desktop app (`herdr-app`), first set up on 2026-11-22/23. Herdr keeps its whole
+Setup for the Herdr desktop app (`herdr-app`), first set up on 2026-11-22/23. For connecting
+another machine (and WSL) to Herdr over SSH, see the `herdr-remote` skill in
+[../skills/](../skills/README.md). Herdr keeps its whole
 configuration as plain files in `~/.config/herdr-app/` and redraws itself within about a second
 of any change, so everything here is "copy a file into that folder".
 
