@@ -260,10 +260,9 @@ gh ssh-key add "$HOME\.ssh\$KeyName.pub" --title $env:COMPUTERNAME
 # Verify: should print "Hi <username>! You've successfully authenticated..."
 # (exit code 1 is normal, GitHub has no shell access)
 ssh -T git@github.com
-# Make gh clone over SSH (gh auth login sets this if you picked SSH)
+# Make gh clone over SSH (gh auth login sets this if you picked SSH); the other
+# git defaults are in "Git defaults" below
 gh config set git_protocol ssh
-# Switch an existing HTTPS clone to SSH, then test with git fetch / git push:
-#   git remote set-url origin git@github.com:<user>/<repo>.git
 # ============================================================================
 #                                 Python & UV
 # ============================================================================
@@ -419,22 +418,59 @@ The Herdr desktop app (terminals and agents), its settings, and the Estro layout
 mods and a GitHub issues panel, pinned to security-reviewed commits: see
 [herdr/README.md](herdr/README.md). Needs `pwsh`, the Nerd Fonts, `gh` and `go` from above.
 
-## Git line endings
+## Git defaults
 
-Git for Windows ships `core.autocrlf=true` in its system config
-(`~\scoop\apps\git\current\etc\gitconfig`), so text files are checked out with CRLF and git
-warns "LF will be replaced by CRLF". For repos edited by Claude and synced elsewhere, add
-[git/gitattributes](git/gitattributes) as the repo's `.gitattributes`:
+Behavior is set once in the global git config, so repos don't need their own rules. Run after
+"Git over SSH" and the GitHub CLI step:
+
+```shell
+# ============================================================================
+#                                Git defaults
+# ============================================================================
+# Line endings: commit LF, never convert on checkout. Overrides Git for Windows'
+# system-level core.autocrlf=true, which checks text out as CRLF and warns
+# "LF will be replaced by CRLF" on every add and diff
+git config --global core.autocrlf input
+# Push to GitHub over SSH even when a repo was cloned over HTTPS. Fetches keep
+# using the clone's URL, so tools that clone public repos (scoop buckets, uv/npm
+# git dependencies) still work without the ssh-agent
+git config --global url."git@github.com:".pushInsteadOf "https://github.com/"
+# gh clones over SSH (gh auth login sets this only if you picked SSH)
+gh config set git_protocol ssh
+```
+
+Every repo also gets [git/gitattributes](git/gitattributes) as its `.gitattributes`, so line
+endings are the same on every machine and OS, whatever that machine's git config says:
 
 ```shell
 # from the root of the target repo; adjust the path to your win-configs clone
 Copy-Item "$HOME\projects\personal\win-configs\git\gitattributes" .\.gitattributes
+git add --renormalize .
 ```
 
-It stores and checks out text as LF on every OS (overriding `core.autocrlf` for that repo only),
-keeps `.bat`/`.cmd` as CRLF, and marks images, PDFs, fonts, archives and Office files binary.
+It stores and checks out text as LF, keeps `.bat`/`.cmd` as CRLF, and marks images, PDFs, fonts,
+archives and Office files binary. Add project-specific binaries at the end (e.g. `*.npy`).
 Everything on Windows used here (VS Code, Notepad, Obsidian, PowerShell 5.1 and 7) handles LF.
-Existing CRLF files stay as they are on disk until git rewrites them, and won't show as changed.
+
+### Checking a repo for local rules
+
+A repo should have no settings of its own beyond its remote and branches. Leftovers from older
+setups break the global defaults: a local `core.autocrlf`, or a local
+`url.https://github.com/.insteadof git@github.com:` (found in one repo; it silently turned an
+SSH remote back into HTTPS, so pushes failed asking for a username). List and remove them:
+
+```shell
+# from the repo root: anything printed besides core.*/remote.*/branch.* basics is a local rule
+git config --local --list
+# remove the usual leftovers (an error just means the setting wasn't there)
+git config --local --unset core.autocrlf
+git config --local --remove-section url.https://github.com/
+# switch an HTTPS remote to SSH (optional, pushInsteadOf already pushes over SSH)
+git remote set-url origin "git@github.com:<user>/<repo>.git"
+```
+
+Claude Code settings follow the same rule: see "Per-project settings" in
+[claude/README.md](claude/README.md).
 
 ## Development tools update
 
