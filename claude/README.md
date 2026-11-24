@@ -45,12 +45,16 @@ Then quit Claude Code completely and start it again from a PowerShell 7 terminal
 - **`"defaultShell": "powershell"`** — `!` commands run in PowerShell instead of Git Bash.
 - **`"env": { "CLAUDE_CODE_USE_POWERSHELL_TOOL": "1" }`** — turns on Claude's PowerShell tool
   explicitly (it was already on by default; this guards against the default changing).
+- **`"permissions": { "deny": ["Bash"] }`** — removes Claude's Bash (Git Bash) tool, so every
+  shell command Claude runs goes through PowerShell 7. The `CLAUDE.md` rule alone wasn't enough:
+  Claude still used Bash when it judged it simpler. Only affects Windows: Claude Code inside WSL
+  reads `~/.claude` in the Linux home, which is separate.
 - **PowerShell 7 vs 5.1** — there's no setting for this. Claude Code uses `pwsh.exe` when it can
   find it and falls back to `powershell.exe`. It looks at startup, so after installing `pwsh`,
   restart Claude Code from a fresh terminal.
 - **`statusLine`** — runs the script with `pwsh -NoProfile -NoLogo`, which skips your profile
   (about 0.16 s to start instead of 0.75 s).
-- **`effortLevel`, `tui`, `cleanupPeriodDays`, `permissions`, `extraKnownMarketplaces`** —
+- **`effortLevel`, `tui`, `cleanupPeriodDays`, the other `permissions`, `extraKnownMarketplaces`** —
   personal preferences, unrelated to the Windows setup.
 
 ## Status line

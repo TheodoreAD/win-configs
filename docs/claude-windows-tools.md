@@ -11,6 +11,8 @@ machine. Current as of 2026-11-23. The Claude Code config itself is in
   startup, so restart Claude Code after installing `pwsh`.
 - **`!` commands run in PowerShell** because of `"defaultShell": "powershell"` in
   `~/.claude/settings.json`. Without it they run in Git Bash.
+- **Claude's Bash tool is disabled** (`"permissions": { "deny": ["Bash"] }` in
+  `~/.claude/settings.json`), so Claude can't fall back to Git Bash.
 - **Claude's shell doesn't load your PowerShell profile.** Aliases, functions (`l`, `d`,
   `docker`) and Oh My Posh exist only in your interactive terminals.
 - **Claude's shell sets `NO_COLOR=1`** for its own commands. It's not in the Windows environment
@@ -62,7 +64,7 @@ that exists in both resolves to the System32 version:
 Git is different: when git runs `ssh` it puts its own `usr\bin` first, whatever PATH says.
 That's why the README sets `core.sshCommand` to Windows' `ssh.exe` by full path.
 
-Git Bash (including Claude's Bash tool, if used) resolves `/usr/bin` first, so `ssh`, `ssh-add`
+Git Bash resolves `/usr/bin` first, so `ssh`, `ssh-add`
 there are git's MSYS versions, which can't reach the Windows agent. Git commands from Git Bash
 are fine once `core.sshCommand` is set; only a manual `ssh -T git@github.com` in Git Bash would
 ask for the passphrase. Not worth fixing since PowerShell is the shell everywhere.

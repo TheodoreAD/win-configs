@@ -30,7 +30,7 @@ Always prefer Claude Code's built-in tools over shell commands. They are more tr
 | **Search content** | Grep tool | `grep`, `rg` |
 | **One-off shell command** | PowerShell 7 | Bash |
 
-When Bash is genuinely necessary and no internal tool covers it: use `rg` for content search, `fd` for file search.
+The Bash tool is disabled on Windows (`permissions.deny` in `~/.claude/settings.json`). When shell search is needed and no internal tool covers it: use `rg` for content search, `fd` for file search.
 
 ---
 
