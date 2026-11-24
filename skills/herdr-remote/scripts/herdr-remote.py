@@ -37,9 +37,7 @@ from pathlib import Path
 OK, WARN, FAIL, INFO, SKIP = "ok", "warn", "fail", "info", "skip"
 LABELS = {OK: "  OK ", WARN: " WARN", FAIL: " FAIL", INFO: " info", SKIP: " skip"}
 
-DEFAULT_HOST = "winbox"
 DEFAULT_DISTRO = "Ubuntu-24.04"
-DEFAULT_WSL_MACHINE = "winbox-wsl"
 BRIDGE_PATH = "/usr/local/bin/hc-via-b64"
 DEFAULT_WRAPPER = "~/.local/bin/herdr-via-wsl"
 KEY_TYPES = ("ssh-ed25519", "ssh-rsa", "ecdsa-sha2-", "sk-ssh-ed25519", "sk-ecdsa-sha2-")
@@ -85,6 +83,27 @@ class Report:
                     print(f"         fix: {fix_line}")
         counts = {s: sum(c.status == s for c in self.checks) for s in (OK, WARN, FAIL, SKIP)}
         print(f"\n{counts[OK]} ok, {counts[WARN]} warnings, {counts[FAIL]} failed, {counts[SKIP]} skipped")
+
+
+# ----------------------------------------------------------------------------- names
+# Everything is named after the Windows machine's hostname, lowercased, so one Linux
+# controller can serve several Windows machines: the SSH Host alias and the Herdr machine
+# are <host>, the WSL machine is <host>--wsl, the key is ~/.ssh/id_ed25519_<host>.
+# The double dash keeps a WSL machine apart from a Windows machine whose own hostname
+# ends in "-wsl"; hostnames practically never contain "--" (Herdr accepts it in names).
+
+
+def windows_name() -> str:
+    """This Windows machine's name, as the Linux side will call it."""
+    return (os.environ.get("COMPUTERNAME") or socket.gethostname()).lower()
+
+
+def wsl_name(host: str) -> str:
+    return f"{host}--wsl"
+
+
+def key_path(host: str) -> Path:
+    return Path.home() / ".ssh" / f"id_ed25519_{host}"
 
 
 # ----------------------------------------------------------------------------- helpers
@@ -511,7 +530,7 @@ def windows_wsl_checks(r: Report, distro: str) -> None:
               "references/wsl.md, step 1")
     hc_ver = facts.get("hc", "none")
     r.add(OK if hc_ver != "none" else WARN, "hc inside WSL", hc_ver,
-          "the Linux controller installs it on `hc machine add ... --name winbox-wsl` (answer yes)")
+          f"the Linux controller installs it on `hc machine add ... --name {wsl_name(windows_name())}` (answer yes)")
 
 
 def windows_status(r: Report, args) -> None:
@@ -541,8 +560,8 @@ def windows_status(r: Report, args) -> None:
 # ----------------------------------------------------------------------------- Linux
 
 
-def ssh_settings(host: str) -> dict[str, list[str]]:
-    code, out, _ = run(["ssh", "-G", host])
+def ssh_settings(host: str, config: Path | None = None) -> dict[str, list[str]]:
+    code, out, _ = run(["ssh", *(["-F", str(config)] if config else []), "-G", host])
     settings: dict[str, list[str]] = {}
     if code == 0:
         for line in out.splitlines():
@@ -555,13 +574,13 @@ def ssh_batch(host: str, remote: list[str], extra: list[str] | None = None, time
     return run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=8", *(extra or []), host, *remote], timeout)
 
 
-def explain_ssh_error(err: str) -> str:
+def explain_ssh_error(err: str, host: str = "<windows-host>") -> str:
     e = err.lower()
     if "permission denied" in e:
         return ("key refused: not installed on Windows yet (linux-controller.md, step 4), or "
                 "from=/AllowUsers don't match this machine's IP (run doctor on Windows)")
     if "host key verification failed" in e:
-        return "first connect interactively (`ssh winbox hc --version`) and compare the host key with Windows doctor"
+        return f"first connect interactively (`ssh {host} hc --version`) and compare the host key with Windows doctor"
     if "timed out" in e or "no route" in e or "refused" in e:
         return "Windows asleep, sshd stopped, IP changed or firewall RemoteAddress wrong"
     if "not recognized" in e:
@@ -583,8 +602,25 @@ def machine_name(m: dict) -> str:
     return str(m.get("name") or m.get("id") or "?")
 
 
+def managed_hosts() -> list[str]:
+    """Windows machines this skill set up here: `Host <name>` entries in ~/.ssh/config whose
+    key follows the id_ed25519_<name> convention. Other SSH hosts are left alone."""
+    config = Path.home() / ".ssh" / "config"
+    try:
+        text = config.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    names = []
+    for line in text.splitlines():
+        parts = line.split("#", 1)[0].split()
+        if len(parts) == 2 and parts[0].lower() == "host" and not any(c in parts[1] for c in "*?!"):
+            names.append(parts[1])
+    return [n for n in names
+            if any(Path(os.path.expanduser(p)).name == key_path(n).name
+                   for p in ssh_settings(n, config).get("identityfile", []))]
+
+
 def linux_doctor(r: Report, args) -> None:
-    host, distro = args.host, args.distro
     hc = shutil.which("hc")
     local_ver = None
     if hc:
@@ -599,12 +635,31 @@ def linux_doctor(r: Report, args) -> None:
     if m:
         r.add(INFO, "This machine's LAN IP", f"{m.group(1)}  (the --from value for key-line; reserve it on the router)")
 
+    hosts = [args.host] if args.host else managed_hosts()
+    if not hosts:
+        r.add(FAIL, "Windows machines", "none set up here yet",
+              "pass --host <the Windows hostname, lowercase>; "
+              "references/linux-controller.md")
+    for host in hosts:
+        r.add(INFO, f"Windows machine {host}", f"Herdr names: {host}, {args.wsl_machine or wsl_name(host)}")
+        linux_host_checks(r, args, host, local_ver)
+
+    machines = linux_hc_machines()
+    if machines is not None:
+        covered = {n for h in hosts for n in (h, args.wsl_machine or wsl_name(h))}
+        for mach in machines:
+            if machine_name(mach) not in covered:
+                r.add(INFO, f"Other Herdr machine '{machine_name(mach)}'", json.dumps(mach)[:200])
+
+
+def linux_host_checks(r: Report, args, host: str, local_ver: str | None) -> None:
+    distro = args.distro
+    wsl_machine = args.wsl_machine or wsl_name(host)
     s = ssh_settings(host)
     hostname = (s.get("hostname") or [host])[0]
     if not s or hostname == host:
-        default_key = Path.home() / ".ssh" / "id_ed25519_winbox"
-        if not default_key.exists():
-            r.add(FAIL, "Key file", f"{default_key} missing", "references/linux-controller.md, step 2")
+        if not key_path(host).exists():
+            r.add(FAIL, "Key file", f"{key_path(host)} missing", "references/linux-controller.md, step 2")
         r.add(FAIL, f"~/.ssh/config Host {host}", "no entry with a HostName",
               "references/linux-controller.md, step 3 (needs the Windows IP and account name "
               "from the Windows doctor's 'For the Linux side' line)")
@@ -642,7 +697,7 @@ def linux_doctor(r: Report, args) -> None:
         with socket.create_connection((hostname, port), timeout=4):
             r.add(OK, "Windows reachable", f"{hostname}:{port}")
     except OSError as e:
-        r.add(FAIL, "Windows reachable", f"{hostname}:{port}: {e}", explain_ssh_error(str(e)))
+        r.add(FAIL, "Windows reachable", f"{hostname}:{port}: {e}", explain_ssh_error(str(e), host))
         return
 
     code, out, err = ssh_batch(host, ["hc", "--version"])
@@ -653,7 +708,7 @@ def linux_doctor(r: Report, args) -> None:
             r.add(WARN, "hc versions match", f"here {local_ver}, Windows {remote_ver}", f"hc machine update {host}")
     else:
         r.add(FAIL, "SSH login + hc on Windows", (err or out).splitlines()[-1] if (err or out) else f"exit {code}",
-              explain_ssh_error(err or out))
+              explain_ssh_error(err or out, host))
 
     # The key should refuse port forwarding; -R is refused at setup, so this is a clean test.
     code, out, err = ssh_batch(host, ["exit"], ["-o", "ExitOnForwardFailure=yes", "-R", "127.0.0.1:0:127.0.0.1:9"])
@@ -680,24 +735,20 @@ def linux_doctor(r: Report, args) -> None:
                 r.add(OK, "WSL via Windows", f"bridge answers; {hc_line}")
                 if "hc=none" in hc_line:
                     r.add(WARN, "hc inside WSL", "not installed yet",
-                          "hc machine add ... --name winbox-wsl installs it (references/wsl.md, step 4)")
+                          f"hc machine add ... --name {wsl_machine} installs it (references/wsl.md, step 4)")
                 elif local_ver and version_of(hc_line) != local_ver:
                     r.add(WARN, "hc versions match", f"here {local_ver}, WSL {version_of(hc_line)}",
-                          f"hc machine update {args.wsl_machine}")
+                          f"hc machine update {wsl_machine}")
 
     machines = linux_hc_machines()
     if machines is None:
         r.add(SKIP, "Herdr machines", "`hc machine ls` failed")
     else:
         names = {machine_name(m) for m in machines}
-        wanted = [host] + ([] if args.no_wsl else [args.wsl_machine])
-        for name in wanted:
+        for name in [host] + ([] if args.no_wsl else [wsl_machine]):
             r.add(OK if name in names else FAIL, f"Herdr machine '{name}'", "added" if name in names else "not added",
                   f"hc machine add {host}" if name == host else
-                  f'hc machine add --via "{wrapper} {host} {distro}" --name {args.wsl_machine}')
-        for m in machines:
-            if machine_name(m) not in wanted:
-                r.add(INFO, f"Other machine '{machine_name(m)}'", json.dumps(m)[:200])
+                  f'hc machine add --via "{wrapper} {host} {distro}" --name {wsl_machine}')
 
 
 def linux_status(r: Report, args) -> None:
@@ -709,17 +760,18 @@ def linux_status(r: Report, args) -> None:
         r.add(WARN, "Herdr machines", "none added")
     for m in machines:
         r.add(INFO, f"Machine '{machine_name(m)}'", json.dumps(m)[:200])
-    code, out, err = ssh_batch(args.host, ["hc", "server", "status", "--json"], timeout=15)
-    try:
-        st = json.loads(out)
-        r.add(OK, f"{args.host} core", f"{st.get('version')}, {st.get('live')} live terminal(s)")
-    except (ValueError, TypeError):
-        r.add(FAIL, f"{args.host} core", (err or "no answer").splitlines()[-1], explain_ssh_error(err))
-    if not args.no_wsl:
-        wrapper = os.path.expanduser(args.wrapper)
-        code, out, err = run([wrapper, args.host, args.distro, "hc --version || echo hc=none"], 60)
-        r.add(OK if code == 0 and "hc=none" not in out else WARN, f"{args.wsl_machine}",
-              (out or err or f"exit {code}").splitlines()[-1])
+    for host in ([args.host] if args.host else managed_hosts()):
+        code, out, err = ssh_batch(host, ["hc", "server", "status", "--json"], timeout=15)
+        try:
+            st = json.loads(out)
+            r.add(OK, f"{host} core", f"{st.get('version')}, {st.get('live')} live terminal(s)")
+        except (ValueError, TypeError):
+            r.add(FAIL, f"{host} core", (err or "no answer").splitlines()[-1], explain_ssh_error(err, host))
+        if not args.no_wsl:
+            wrapper = os.path.expanduser(args.wrapper)
+            code, out, err = run([wrapper, host, args.distro, "hc --version || echo hc=none"], 60)
+            r.add(OK if code == 0 and "hc=none" not in out else WARN, args.wsl_machine or wsl_name(host),
+                  (out or err or f"exit {code}").splitlines()[-1])
 
 
 # ----------------------------------------------------------------------------- key-line
@@ -774,15 +826,15 @@ def main() -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
     for name, helptext in (("doctor", "run every check"), ("status", "quick live view")):
         sp = sub.add_parser(name, help=helptext)
-        sp.add_argument("--host", default=DEFAULT_HOST, help=f"SSH Host alias for Windows (default {DEFAULT_HOST})")
+        sp.add_argument("--host", help="Windows machine's SSH Host alias, its lowercased hostname (Linux default: "
+                        "every machine set up here; Windows default: this machine's hostname)")
         sp.add_argument("--distro", default=DEFAULT_DISTRO, help=f"WSL distro (default {DEFAULT_DISTRO})")
-        sp.add_argument("--wsl-machine", default=DEFAULT_WSL_MACHINE,
-                        help=f"Herdr name of the WSL machine (default {DEFAULT_WSL_MACHINE})")
+        sp.add_argument("--wsl-machine", help="Herdr name of the WSL machine (default <host>--wsl)")
         sp.add_argument("--wrapper", default=DEFAULT_WRAPPER, help=f"Linux WSL wrapper (default {DEFAULT_WRAPPER})")
         sp.add_argument("--no-wsl", action="store_true", help="skip WSL checks")
         sp.add_argument("--json", action="store_true", help="JSON output")
     kp = sub.add_parser("key-line", help="print the restricted authorized_keys line (run on Linux)")
-    kp.add_argument("pubkey", help="the .pub file, e.g. ~/.ssh/id_ed25519_winbox.pub")
+    kp.add_argument("pubkey", help="the .pub file, e.g. ~/.ssh/id_ed25519_<windows-host>.pub")
     kp.add_argument("--from", dest="from_ips", nargs="+", required=True, metavar="IP",
                     help="the Linux controller's LAN IP(s)")
     kp.add_argument("--windows", action="store_true",

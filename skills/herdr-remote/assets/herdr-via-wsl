@@ -2,9 +2,9 @@
 # herdr-via-wsl: runs on the Linux controller. Install as ~/.local/bin/herdr-via-wsl (mode 755).
 #
 # Usage, as Herdr's --via command (Herdr appends the remote shell line as the last argument):
-#   hc machine add --via "$HOME/.local/bin/herdr-via-wsl winbox Ubuntu-24.04" --name winbox-wsl
+#   hc machine add --via "$HOME/.local/bin/herdr-via-wsl <windows-host> Ubuntu-24.04" --name <windows-host>--wsl
 # By hand, to test:
-#   herdr-via-wsl winbox Ubuntu-24.04 'uname -a; command -v hc'
+#   herdr-via-wsl <windows-host> Ubuntu-24.04 'uname -a; command -v hc'
 #
 # The line is base64-encoded so it survives Windows sshd -> cmd.exe -> wsl.exe untouched
 # (base64 has no characters cmd.exe treats specially). hc-via-b64 inside WSL decodes it.

@@ -1,6 +1,6 @@
 ---
 name: herdr-remote
-description: Set up, check and repair a Herdr desktop-app setup where a Linux machine is the controller and reaches a Windows machine (and that Windows machine's WSL distro) as Herdr machines over SSH. Includes a doctor that checks either side (sshd, key restrictions, key file ACL, firewall, hc versions, the WSL bridge) and a quick status view. Use this whenever the user wants to add, enroll or connect another computer or WSL to Herdr, mentions `hc machine add`, winbox, winbox-wsl, Herdr over SSH, Windows OpenSSH server for Herdr, or asks to run the herdr doctor/status, or a Herdr remote machine won't connect, even if they don't name this skill.
+description: Set up, check and repair a Herdr desktop-app setup where a Linux machine is the controller and reaches a Windows machine (and that Windows machine's WSL distro) as Herdr machines over SSH. Includes a doctor that checks either side (sshd, key restrictions, key file ACL, firewall, hc versions, the WSL bridge) and a quick status view. Use this whenever the user wants to add, enroll or connect another computer or WSL to Herdr, mentions `hc machine add`, a Windows or WSL machine in Herdr's sidebar, Herdr over SSH, Windows OpenSSH server for Herdr, or asks to run the herdr doctor/status, or a Herdr remote machine won't connect, even if they don't name this skill.
 ---
 
 # Herdr remote: Linux controller → Windows host + WSL
@@ -17,9 +17,9 @@ opens Linux stored on Windows. Each of those makes Linux only as safe as Windows
 user asks for one, explain that cost first.
 
 ```
-Linux controller (Herdr app, hc, key ~/.ssh/id_ed25519_winbox)
-   │  ssh winbox hc connect                       → Herdr machine "winbox"
-   │  herdr-via-wsl → ssh winbox wsl.exe … hc-via-b64 → Herdr machine "winbox-wsl"
+Linux controller (Herdr app, hc, key ~/.ssh/id_ed25519_<windows-host>)
+   │  ssh <windows-host> hc connect                       → Herdr machine "<windows-host>"
+   │  herdr-via-wsl → ssh <windows-host> wsl.exe … hc-via-b64 → Herdr machine "<windows-host>--wsl"
    ▼
 Windows host: OpenSSH server, firewall allows the Linux IP only,
               key restricted: from=<Linux IP>, no forwarding, no pty
@@ -31,9 +31,28 @@ older TUI (`herdr` CLI, `herdr machine add`). Commands for one don't work in the
 `hc machine add` connects by running `hc connect` over a plain SSH command. That's why
 the key can refuse port forwarding and PTYs.
 
-Default names, used throughout: SSH host alias `winbox`, WSL machine `winbox-wsl`,
-distro `Ubuntu-24.04`, key `~/.ssh/id_ed25519_winbox`. If the user's names differ, pass
-them to the script (`--host`, `--distro`, `--wsl-machine`).
+### Names
+
+Everything is named after the Windows machine's hostname, lowercased: `<windows-host>`
+throughout these docs. One Linux controller can then serve several Windows machines side
+by side, each with its own key and its own restrictions.
+
+- **SSH Host alias and Herdr machine**: `<windows-host>`. `hc machine add` takes the
+  machine's name from the alias.
+- **Herdr WSL machine**: `<windows-host>--wsl`. The double dash keeps it apart from a
+  Windows machine whose own hostname ends in `-wsl`; hostnames practically never contain
+  `--`, and Herdr accepts it in machine names.
+- **Key**: `~/.ssh/id_ed25519_<windows-host>`, one per Windows machine.
+- **Distro**: `Ubuntu-24.04` unless the Windows doctor reports otherwise.
+
+The script follows the same rules:
+
+- **On Windows** it uses its own hostname.
+- **On Linux**, without `--host`, it checks every `Host` in `~/.ssh/config` whose key is
+  `id_ed25519_<that host>`, and ignores unrelated SSH hosts. With `--host <name>` it
+  checks only that one. `--distro` and `--wsl-machine` override the other names.
+
+When adding a machine, never touch another machine's `Host` entry or key.
 
 ## Doctor, status and key-line
 
@@ -80,7 +99,7 @@ as-is. The only such block is the key-install command from
 Work in this order, and run `doctor` on the machine you just changed after each phase:
 
 1. **Windows host**: `references/windows-host.md` (admin steps: sshd, firewall, sshd_config, key file).
-2. **Linux controller**: `references/linux-controller.md` (key, `~/.ssh/config`, first connect, `hc machine add winbox`).
+2. **Linux controller**: `references/linux-controller.md` (key, `~/.ssh/config`, first connect, `hc machine add <windows-host>`).
 3. **WSL as its own machine**: `references/wsl.md` (normal user, bridge, wrapper, `hc machine add --via ...`).
 
 Read only the reference for the phase you're on. When something breaks, use

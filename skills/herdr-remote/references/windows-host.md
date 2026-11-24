@@ -77,7 +77,7 @@ Restart-Service sshd
 The easy way: on Linux, `key-line ... --windows` (`references/linux-controller.md`,
 step 4) prints this whole step as one block, with the key already inside. Paste that into
 an admin window and skip the rest of this step. By hand, the key line looks like
-`from="<LINUX_IP>",no-port-forwarding,no-agent-forwarding,no-x11-forwarding,no-pty ssh-ed25519 AAAA... herdr linux->winbox`.
+`from="<LINUX_IP>",no-port-forwarding,no-agent-forwarding,no-x11-forwarding,no-pty ssh-ed25519 AAAA... herdr linux-><windows-host>`.
 
 If the Windows account is in **Administrators** (check with
 `whoami /groups | Select-String S-1-5-32-544`), sshd ignores `~\.ssh\authorized_keys` and
@@ -101,8 +101,8 @@ What the restrictions do:
 - **`no-agent-forwarding`, `no-x11-forwarding`**: no agent or X11 forwarding.
 - **`no-pty`**: no interactive terminal session. Herdr doesn't need one.
 
-A side effect of `no-pty`: plain `ssh winbox` gives a clumsy shell. Use commands such as
-`ssh winbox hc --version` to test.
+A side effect of `no-pty`: plain `ssh <windows-host>` gives a clumsy shell. Use commands such as
+`ssh <windows-host> hc --version` to test.
 
 ## 6. Host key fingerprint, for Linux's first connect
 
@@ -110,7 +110,7 @@ A side effect of `no-pty`: plain `ssh winbox` gives a clumsy shell. Use commands
 Get-ChildItem C:\ProgramData\ssh\ssh_host_*_key.pub | ForEach-Object { ssh-keygen -lf $_ }
 ```
 
-`doctor` prints the same thing. Compare it with what Linux shows on its first `ssh winbox`.
+`doctor` prints the same thing. Compare it with what Linux shows on its first `ssh <windows-host>`.
 
 ## 7. Keep Herdr's core available
 
@@ -134,3 +134,4 @@ python -I <skill>\scripts\herdr-remote.py doctor
 
 Run it from an elevated window as well; only an elevated run can inspect the key file's
 contents.
+

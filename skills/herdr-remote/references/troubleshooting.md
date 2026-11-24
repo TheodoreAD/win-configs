@@ -28,7 +28,7 @@ Check these in order:
 5. **The key line itself.** It must be a single line. A paste can wrap it or add a BOM;
    `-Encoding utf8NoBOM` avoids the BOM.
 6. **Linux side.** Check `IdentityFile` and `IdentitiesOnly yes`. Run
-   `ssh -v winbox hc --version` to see which key is offered.
+   `ssh -v <windows-host> hc --version` to see which key is offered.
 
 ## Timeout or connection refused
 
@@ -59,15 +59,15 @@ registry, not from the app's environment. Add `%LOCALAPPDATA%\Programs\herdr-cor
 user PATH. To see what an SSH session gets:
 
 ```bash
-ssh winbox "echo %PATH%"
+ssh <windows-host> "echo %PATH%"
 ```
 
 ## Version mismatch warnings
 
-Run `hc machine update winbox` and `hc machine update winbox-wsl` from Linux. This copies
+Run `hc machine update <windows-host>` and `hc machine update <windows-host>--wsl` from Linux. This copies
 the controller's `hc` across and restarts that core; its terminals keep running.
 
-## `winbox-wsl` fails but `winbox` works
+## `<windows-host>--wsl` fails but `<windows-host>` works
 
 1. **The by-hand test.** Run it from `wsl.md` step 3; it isolates the problem.
 2. **`usage: hc-via-b64`, or `not found`.** The bridge is missing or has CRLF line
@@ -78,7 +78,7 @@ the controller's `hc` across and restarts that core; its terminals keep running.
 4. **`base64: invalid input`.** A different wrapper or a manual edit garbled the argument.
    Reinstall `assets/herdr-via-wsl`.
 5. **Hangs.** Something asked a question: a host key prompt or a passphrase.
-   `herdr-via-wsl` uses `BatchMode=yes`, so it should fail instead. Run `ssh winbox hc
+   `herdr-via-wsl` uses `BatchMode=yes`, so it should fail instead. Run `ssh <windows-host> hc
    --version` by hand once.
 
 ## WSL terminals gone after reconnect
@@ -106,4 +106,4 @@ The core was started over SSH instead of from the desktop. An admin account's SS
 elevated, and `hc`'s notes say an elevated core started over SSH can block the same user's
 desktop session. Windows also ends a session's processes when it closes. To fix it, open
 Herdr on the Windows desktop, or run `hc server start` in a normal desktop terminal, then
-reconnect from Linux (`hc machine login winbox`). After that, keep Herdr starting at login.
+reconnect from Linux (`hc machine login <windows-host>`). After that, keep Herdr starting at login.

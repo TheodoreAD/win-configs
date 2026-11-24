@@ -1,7 +1,7 @@
 #!/bin/sh
 # hc-via-b64: runs inside WSL. Install as /usr/local/bin/hc-via-b64 (mode 755).
 #
-# Herdr on the Linux controller reaches WSL as: ssh winbox -> wsl.exe -> this script.
+# Herdr on the Linux controller reaches WSL as: ssh <windows-host> -> wsl.exe -> this script.
 # Windows sshd hands the command to cmd.exe, which mangles quotes and pipes, so the
 # controller's wrapper (herdr-via-wsl) sends the shell line base64-encoded as one plain
 # argument, and this script decodes and runs it.

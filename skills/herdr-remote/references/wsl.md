@@ -1,7 +1,7 @@
 # Phase 3: WSL as its own Herdr machine
 
-Linux reaches WSL as `ssh winbox` → `wsl.exe` → a small bridge script. WSL gets no SSH
-server and no open ports. The `winbox` key already gives a shell as the Windows user, who
+Linux reaches WSL as `ssh <windows-host>` → `wsl.exe` → a small bridge script. WSL gets no SSH
+server and no open ports. The `<windows-host>` key already gives a shell as the Windows user, who
 can run `wsl.exe` anyway, so this grants nothing new.
 
 ### Why there's a bridge
@@ -62,7 +62,7 @@ install -D -m 755 <skill>/assets/herdr-via-wsl ~/.local/bin/herdr-via-wsl
 ## 3. Test the path by hand
 
 ```bash
-~/.local/bin/herdr-via-wsl winbox Ubuntu-24.04 'id -un; uname -r; command -v hc || echo no-hc-yet'
+~/.local/bin/herdr-via-wsl <windows-host> Ubuntu-24.04 'id -un; uname -r; command -v hc || echo no-hc-yet'
 ```
 
 You should see the WSL user, a `microsoft` kernel, and `no-hc-yet` the first time.
@@ -70,7 +70,7 @@ You should see the WSL user, a `microsoft` kernel, and `no-hc-yet` the first tim
 ## 4. Add it to Herdr
 
 ```bash
-hc machine add --via "$HOME/.local/bin/herdr-via-wsl winbox Ubuntu-24.04" --name winbox-wsl
+hc machine add --via "$HOME/.local/bin/herdr-via-wsl <windows-host> Ubuntu-24.04" --name <windows-host>--wsl
 ```
 
 When asked whether to install `hc` there, say yes. It copies the Linux `hc` into WSL's
@@ -94,7 +94,7 @@ terminals gone after reconnect").
 On Linux:
 
 ```bash
-python3 <skill>/scripts/herdr-remote.py doctor
+python3 <skill>/scripts/herdr-remote.py doctor --host <windows-host>
 ```
 
 On Windows:
