@@ -49,6 +49,9 @@ Then quit Claude Code completely and start it again from a PowerShell 7 terminal
   shell command Claude runs goes through PowerShell 7. The `CLAUDE.md` rule alone wasn't enough:
   Claude still used Bash when it judged it simpler. Only affects Windows: Claude Code inside WSL
   reads `~/.claude` in the Linux home, which is separate.
+- **`"allow": ["PowerShell(uv run invoke *)"]`** — runs project tasks without asking, in every
+  repo that uses [Invoke](https://www.pyinvoke.org/). Kept here instead of in each repo's
+  `settings.local.json`.
 - **PowerShell 7 vs 5.1** — there's no setting for this. Claude Code uses `pwsh.exe` when it can
   find it and falls back to `powershell.exe`. It looks at startup, so after installing `pwsh`,
   restart Claude Code from a fresh terminal.
@@ -112,9 +115,30 @@ lines added/removed per session, cost per hour, session name, Herdr space/tab la
 [claude-powerline](https://unpkg.com/@owloops/claude-powerline@1.26.0/README.md),
 [cship](https://docs.rs/crate/cship/1.7.1).
 
+## Per-project settings
+
+The global files above define how Claude behaves everywhere; repos add as little as possible:
+
+- **Project instructions** go in the repo's `CLAUDE.md` (or `AGENTS.md`, which Claude Code also
+  reads): facts about that project, never shell or tool preferences, which are global.
+- **`.claude/settings.local.json`** (gitignored) only for what's truly specific to the repo on
+  this machine, such as `additionalDirectories` for folders outside it, or `WebFetch` domains
+  approved while working in it. A permission useful in any repo goes in the global
+  `settings.json` instead (like `uv run invoke` above).
+- **No `.claude/settings.json`** in repos unless a setting must be shared with other people.
+- **No hooks.** A venv-activation hook was tried in one repo (2026-08) and removed: it hardcoded
+  the machine's paths, and Claude Code doesn't apply a hook's rewritten command for the
+  PowerShell tool, only for Bash. Python projects run their tools with `uv run`, which needs no
+  activated venv.
+- **Project skills** in `.claude/skills/` are fine: they're the project's workflows, not
+  settings.
+
+Git has the same rule (no local config beyond the remote): see "Git defaults" in the
+[main README](../README.md).
+
 ## Not set up
 
 - **`/fewer-permission-prompts`** — scans past sessions for read-only commands you keep
   approving and adds them to an allowlist. Useful outside auto mode.
-- **Hooks** — deliberately not used (extra complexity); project rules live in each repo's
-  `CLAUDE.md`.
+- **Hooks** — deliberately not used (extra complexity, see "Per-project settings"); project
+  rules live in each repo's `CLAUDE.md`.

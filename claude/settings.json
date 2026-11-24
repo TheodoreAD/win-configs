@@ -2,7 +2,8 @@
   "cleanupPeriodDays": 365,
   "permissions": {
     "allow": [
-      "WebSearch"
+      "WebSearch",
+      "PowerShell(uv run invoke *)"
     ],
     "ask": [
       "WebFetch"

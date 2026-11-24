@@ -64,6 +64,8 @@ The Bash tool is disabled on Windows (`permissions.deny` in `~/.claude/settings.
 - **Commit email:** commits must not expose a personal email address. Use GitHub's noreply address (`<id>+<login>@users.noreply.github.com`, derived from `gh api user`)
 - **Line endings:** every repo gets a `.gitattributes` that stores and checks out text as LF (`* text=auto eol=lf`), keeps `.bat`/`.cmd` as CRLF and marks binaries. Shell scripts that run in WSL or on Linux must be LF. A template lives in the `win-configs` repo (`git/gitattributes`)
 - **Editor folders** (`.vscode/`, `.idea/`) are personal and never committed
+- **No repo-specific rules for machine behavior.** Git and Claude Code behavior comes from global config so every repo works the same. Don't add local git config (`core.autocrlf`, `url.*.insteadOf`, ...) or `.claude/settings*.json` entries that would make sense in any repo, and never add hooks; propose a global change in the `win-configs` repo instead. `.claude/settings.local.json` is only for things specific to that repo on this machine (e.g. `additionalDirectories`)
+- **Python tools run through `uv run`** (`uv run invoke ...`, `uv run pytest`); never activate a venv
 
 ---
 
