@@ -1,31 +1,35 @@
 # Phase 2: Linux controller
 
 Claude runs these steps on the Linux machine itself, and asks before each one that changes
-something. The user only has to answer a few questions, and carry one block of text to
-Windows (step 4). Repeat this phase for each Windows machine. Each one gets its own
-`<windows-host>` name, key and `Host` entry; never change another machine's.
+something. The user pastes the handoff prompt from Windows, and carries one block of text
+back to Windows (step 4). Repeat this phase for each Windows machine. Each one gets its
+own `<windows-host>` name, key and `Host` entry; never change another machine's.
 
 ## 0. Gather the facts
 
-Discover these instead of asking for them:
+The handoff prompt (`herdr-remote.py handoff`, run on Windows) gives:
+
+- **`<windows-host>`**: the Windows hostname, lowercased. It's the name for everything below.
+- **`<WINDOWS_IP>`**: the Windows LAN IP.
+- **`<WINDOWS_USER>`**: the Windows account name.
+- **Host key fingerprint**: needed in step 5, to verify the first connect.
+- **Allowed controller IP**: Windows only accepts SSH from this address.
+
+Without a handoff prompt, ask the user for those. They're all on the Windows doctor's
+"For the Linux side" line.
+
+Discover the rest here:
 
 ```bash
 ip -4 route get 1.1.1.1 | awk '{for(i=1;i<NF;i++) if($i=="src") print $(i+1)}'   # this machine's LAN IP
-ls ~/.ssh/id_ed25519_<windows-host>* 2>/dev/null                                         # key already made?
-ssh -G <windows-host> | grep -Ei '^(hostname|user|identityfile) '                        # config entry already there?
-command -v hc && hc --version && hc machine ls                                   # Herdr installed? machines?
+ls ~/.ssh/id_ed25519_<windows-host>* 2>/dev/null       # key already made?
+ssh -G <windows-host> | grep -Ei '^(hostname|user|identityfile) '   # config entry already there?
+command -v hc && hc --version && hc machine ls       # Herdr installed? machines?
 ```
 
-`ssh -G` prints `hostname <windows-host>` when there's no entry yet.
-
-Ask the user only for what Linux can't know. The rest are shown on the Windows side, in
-the doctor's "For the Linux side" line (`herdr-remote.py doctor` on Windows):
-
-- **Windows hostname**, lowercased: `<windows-host>`, the name for everything below
-  (`hostname` on Windows).
-- **Windows LAN IP**: `<WINDOWS_IP>`
-- **Windows account name**: `<WINDOWS_USER>`
-- **Host key fingerprint**: only needed in step 5, to verify the first connect.
+`ssh -G` prints `hostname <windows-host>` when there's no entry yet. This machine's LAN IP
+must equal the allowed controller IP from the handoff prompt. If it doesn't, stop: the
+Windows side's firewall, `AllowUsers` and key `from=` need that IP.
 
 ## 1. Herdr desktop app
 

@@ -52,7 +52,8 @@ The script follows the same rules:
   `id_ed25519_<that host>`, and ignores unrelated SSH hosts. With `--host <name>` it
   checks only that one. `--distro` and `--wsl-machine` override the other names.
 
-When adding a machine, never touch another machine's `Host` entry or key.
+The Windows `handoff` prompt states the names, so Claude on Linux never has to guess
+them. When adding a machine, never touch another machine's `Host` entry or key.
 
 ## Doctor, status and key-line
 
@@ -67,6 +68,8 @@ the OS, uses only the standard library, and is read-only. Run it on Windows with
   - On Windows: sshd state, who is connected right now, the Herdr core, whether WSL is
     running (it doesn't start WSL).
   - On Linux: the Herdr machines, plus a probe of each one.
+- **`handoff`** (Windows only): the doctor, turned into a prompt for Claude on the Linux
+  controller. It goes to stdout; the list of current failures goes to stderr.
 - **`key-line KEY.pub --from <Linux IP> [--windows]`**: run on Linux. It prints the
   restricted `authorized_keys` line, and refuses private keys. With `--windows` it prints a
   complete admin PowerShell block (5.1 or 7) that installs the line on Windows and locks
@@ -93,8 +96,16 @@ Windows IP, account name and host key fingerprint, which the Windows doctor's "F
 Linux side" line shows.
 
 Anything that must cross between the machines should be a single block the user can move
-as-is. The only such block is the key-install command from
-`key-line ... --windows` (`references/linux-controller.md`, step 4).
+as-is. There are two:
+
+- **Windows → Linux: `herdr-remote.py handoff`**, run on Windows. It runs the doctor and
+  prints a ready-to-paste prompt for Claude on Linux: the skill install command, the
+  Windows IP, account, host key fingerprint and allowed controller IP, what's done and
+  open on Windows, and the steps to work through. Offer it once the Windows host phase is
+  done, or whenever the user moves to the Linux machine. Show the prompt in full in one
+  code block, not summarized: the user copies it as-is.
+- **Linux → Windows: `key-line ... --windows`** (`references/linux-controller.md`, step 4),
+  the key-install block.
 
 Work in this order, and run `doctor` on the machine you just changed after each phase:
 

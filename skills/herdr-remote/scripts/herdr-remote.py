@@ -62,6 +62,7 @@ class Check:
 class Report:
     def __init__(self) -> None:
         self.checks: list[Check] = []
+        self.facts: dict = {}  # what the checks learned, for `handoff`
 
     def add(self, status: str, name: str, detail: str = "", fix: str = "") -> None:
         self.checks.append(Check(status, name, detail, fix))
@@ -476,7 +477,15 @@ def windows_doctor(r: Report, args) -> None:
     r.add(INFO, "For the Linux side",
           f"HostName {' or '.join(lan_ips) or '<this PC LAN IP>'}, User {user}"
           + (f", host key {ed25519}" if ed25519 else ", host key: start sshd first")
-          + "  (Claude on Linux asks for these; read them off here)")
+          + "  (`herdr-remote.py handoff` turns this into a prompt for Claude on Linux)")
+    allow_ips = sorted({a.split("@", 1)[1] for a in (glob or {}).get("allowusers", "").split() if "@" in a})
+    r.facts.update(
+        user=user, lan_ips=lan_ips, fingerprint=ed25519,
+        sshd=svc["Status"] if svc else "not installed",
+        passwords_off=bool(glob) and glob.get("passwordauthentication", "yes").lower() == "no",
+        controller_ips=sorted(set(fw_ips) | set(key_ips) | set(allow_ips)),
+        key_installed=key_file.exists(), key_ips=sorted(set(key_ips)),
+    )
 
     # --- Herdr core
     hc = shutil.which("hc")
@@ -529,6 +538,7 @@ def windows_wsl_checks(r: Report, distro: str) -> None:
         r.add(FAIL, "WSL bridge installed", f"{BRIDGE_PATH} missing" if code == 0 else (err or "wsl.exe failed"),
               "references/wsl.md, step 1")
     hc_ver = facts.get("hc", "none")
+    r.facts.update(distro=distro, wsl_user=wsl_user, bridge=facts.get("bridge") == "yes", wsl_hc=hc_ver)
     r.add(OK if hc_ver != "none" else WARN, "hc inside WSL", hc_ver,
           f"the Linux controller installs it on `hc machine add ... --name {wsl_name(windows_name())}` (answer yes)")
 
@@ -638,7 +648,7 @@ def linux_doctor(r: Report, args) -> None:
     hosts = [args.host] if args.host else managed_hosts()
     if not hosts:
         r.add(FAIL, "Windows machines", "none set up here yet",
-              "pass --host <the Windows hostname, lowercase>; "
+              "pass --host <the Windows hostname, lowercase> (the handoff prompt names it); "
               "references/linux-controller.md")
     for host in hosts:
         r.add(INFO, f"Windows machine {host}", f"Herdr names: {host}, {args.wsl_machine or wsl_name(host)}")
@@ -662,7 +672,7 @@ def linux_host_checks(r: Report, args, host: str, local_ver: str | None) -> None
             r.add(FAIL, "Key file", f"{key_path(host)} missing", "references/linux-controller.md, step 2")
         r.add(FAIL, f"~/.ssh/config Host {host}", "no entry with a HostName",
               "references/linux-controller.md, step 3 (needs the Windows IP and account name "
-              "from the Windows doctor's 'For the Linux side' line)")
+              "from the handoff prompt or the Windows doctor's 'For the Linux side' line)")
         return
     user = (s.get("user") or ["?"])[0]
     port = int((s.get("port") or ["22"])[0])
@@ -774,6 +784,81 @@ def linux_status(r: Report, args) -> None:
                   (out or err or f"exit {code}").splitlines()[-1])
 
 
+# ----------------------------------------------------------------------------- handoff
+
+
+def skill_source() -> str:
+    """owner/repo of the GitHub repo this skill came from, for `npx skills add`."""
+    code, out, _ = run(["git", "-C", str(Path(__file__).resolve().parent), "remote", "get-url", "origin"])
+    m = re.search(r"github\.com[:/]([^/]+/[^/]+?)(?:\.git)?$", out.strip()) if code == 0 else None
+    return m.group(1) if m else "<github-user>/win-configs"
+
+
+def handoff(args) -> int:
+    """Print a prompt for Claude on the Linux controller, built from this Windows machine's state."""
+    if platform.system() != "Windows":
+        print("Run `handoff` on the Windows machine: it describes Windows for the Linux side.", file=sys.stderr)
+        return 2
+    r = Report()
+    windows_doctor(r, args)
+    f = r.facts
+    ip = " or ".join(f.get("lan_ips") or []) or "<ask me: the Windows LAN IP>"
+    ctrl = ", ".join(f.get("controller_ips") or []) or "not restricted yet"
+    done, todo = [], []
+    (done if f.get("sshd") == "Running" else todo).append("OpenSSH server running")
+    (done if f.get("passwords_off") else todo).append("password logins off")
+    (done if f.get("controller_ips") else todo).append("SSH limited to the controller's IP")
+    (done if f.get("key_installed") else todo).append("this machine's public key installed (needs the block from step 4)")
+    wsl = ""
+    if not args.no_wsl and f.get("distro"):
+        wsl_bits = [f"distro {f['distro']}", f"default user {f.get('wsl_user')}"]
+        wsl_bits.append("bridge installed" if f.get("bridge") else "bridge NOT installed yet (a Windows-side step)")
+        wsl = "- WSL: " + ", ".join(wsl_bits) + "\n"
+    host = args.host or windows_name()
+    wsl_machine = args.wsl_machine or wsl_name(host)
+    if f.get("wsl_user") == "root":
+        wsl += f"  (WSL's default user is root; that's fixed on Windows, wsl.md step 0, before adding {wsl_machine})\n"
+    fails = [c.name for c in r.checks if c.status == FAIL]
+    print(f"""If the herdr-remote skill isn't installed on this machine yet, install it first:
+  npx skills add {skill_source()} --skill herdr-remote -a claude-code -g -y
+
+Use the herdr-remote skill to set up this Linux machine as the Herdr controller for my
+Windows PC {host} (and its WSL), following its linux-controller.md and wsl.md. Do
+everything on this side yourself, ask me before each step that changes something, and
+when something has to happen on Windows, give me exactly one block to carry over.
+Other Windows machines may already be set up here; leave their entries and keys alone.
+
+Names for this machine (the skill's convention, from its hostname):
+- SSH Host alias and Herdr machine: {host}
+- Herdr WSL machine: {wsl_machine}
+- Key: ~/.ssh/id_ed25519_{host}
+
+Facts from the Windows machine (its doctor, run just now):
+- Windows LAN IP: {ip}  -> HostName of `Host {host}`
+- Windows account: {f.get('user')}  -> User of `Host {host}`
+- Windows sshd host key: {f.get('fingerprint') or 'unknown (sshd not running yet)'} (ED25519). Check it against
+  ssh-keyscan before the first connect, and stop if it differs.
+- Windows accepts SSH only from: {ctrl}. That must be this machine's LAN IP; if it isn't,
+  stop and tell me (the Windows side needs updating, not this one).
+- Done on Windows: {', '.join(done) or 'nothing yet'}
+- Still open on Windows: {', '.join(todo) or 'nothing'}
+{wsl}
+What I want from you:
+1. Run the skill's doctor here (--host {host}) and work through Phase 2: Herdr app present,
+   the id_ed25519_{host} key (I'll type the passphrase myself), the `Host {host}` entry,
+   then `key-line --windows` saved to a file for me to carry to Windows.
+2. When I say it's pasted on Windows: verify the host key, `ssh {host} hc --version`,
+   `hc machine add {host}`, doctor --host {host} --no-wsl.
+3. Phase 3, Linux parts: install the herdr-via-wsl wrapper from the skill's assets. If the
+   bridge is installed on Windows, test it and add `{wsl_machine}`; if not, tell me what
+   Windows still needs.
+4. Finish with the doctor and a short summary of what's left on each machine.
+""")
+    if fails:
+        print(f"(Windows doctor failures right now: {'; '.join(fails)})", file=sys.stderr)
+    return 0
+
+
 # ----------------------------------------------------------------------------- key-line
 
 
@@ -824,7 +909,8 @@ def main() -> int:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = p.add_subparsers(dest="cmd", required=True)
-    for name, helptext in (("doctor", "run every check"), ("status", "quick live view")):
+    for name, helptext in (("doctor", "run every check"), ("status", "quick live view"),
+                           ("handoff", "Windows: print a prompt for Claude on the Linux controller")):
         sp = sub.add_parser(name, help=helptext)
         sp.add_argument("--host", help="Windows machine's SSH Host alias, its lowercased hostname (Linux default: "
                         "every machine set up here; Windows default: this machine's hostname)")
@@ -843,6 +929,8 @@ def main() -> int:
 
     if args.cmd == "key-line":
         return key_line(args)
+    if args.cmd == "handoff":
+        return handoff(args)
 
     system = platform.system()
     r = Report()

@@ -135,3 +135,12 @@ python -I <skill>\scripts\herdr-remote.py doctor
 Run it from an elevated window as well; only an elevated run can inspect the key file's
 contents.
 
+## 9. Hand over to the Linux machine
+
+```powershell
+python -I <skill>\scripts\herdr-remote.py handoff
+```
+
+This prints a prompt for Claude on the Linux machine, with everything it needs from this
+side. Paste it there. It doesn't matter that the key isn't installed yet: Linux produces
+the key-install block and the prompt says so.
