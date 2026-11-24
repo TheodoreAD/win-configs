@@ -1,7 +1,7 @@
 # Setup log, November 2026
 
-What was changed on the first machine set up this way, during Claude Code sessions on
-2026-11-22 and 2026-11-23, in order, with the reasons. The README and the `claude/`, `herdr/`,
+What was changed on the first machine set up this way, during Claude Code sessions from
+2026-11-22 to 2026-11-25, in order, with the reasons. The README and the `claude/`, `herdr/`,
 `ssh/` and `git/` folders hold the resulting setup; this log keeps the process and the decisions.
 
 ## 2026-11-22: PowerShell 7, Claude Code, scoop
@@ -139,6 +139,35 @@ What was changed on the first machine set up this way, during Claude Code sessio
 - **Network profile reviewed:** the home LAN is on Public but File and Printer Sharing is on for
   Public and a `Users` share exists; the network printer (IPP) doesn't need either. Ideal setup
   recorded in `docs/plan-apps-and-settings.md`; nothing changed yet.
+
+## 2026-11-25: global defaults instead of per-repo rules
+
+Triggered by bringing `ataraxia` (set up in 2026-08, before this setup) in line with it. Goal: the
+same behavior in every repo, from global config, with as little per-repo configuration as
+possible.
+
+- **Claude's Bash tool denied** (`"deny": ["Bash"]` in `settings.json`). The `CLAUDE.md` rule
+  allowed Bash "when genuinely necessary", and Claude kept using it.
+- **Git line endings global:** `core.autocrlf input` in `~/.gitconfig`, overriding Git for
+  Windows' system `true`. `ataraxia` had its own `core.autocrlf=false`; removed. Each repo still
+  gets the `.gitattributes` template so other machines behave the same.
+- **Pushes always over SSH:** `url."git@github.com:".pushInsteadOf "https://github.com/"` in
+  `~/.gitconfig`. `pushInsteadOf` rather than `insteadOf` so fetches by tools that clone public
+  repos over HTTPS don't depend on the ssh-agent.
+- **`gh` protocol fixed:** `git_protocol` was `https` despite the README step; set to `ssh`.
+- **Leftover local rewrite found:** `ataraxia/.git/config` had
+  `url.https://github.com/.insteadof git@github.com:`, which turned its SSH remote back into
+  HTTPS so pushes failed asking for a username. Removed; the README's "Checking a repo for local
+  rules" covers finding these.
+- **Claude per-project settings:** `PowerShell(uv run invoke *)` moved from `ataraxia`'s
+  `settings.local.json` to the global allow list, and that file deleted. `ataraxia`'s
+  venv-activation hooks were removed (machine paths hardcoded; Claude Code ignores a hook's
+  rewritten command for the PowerShell tool). Rules recorded in "Per-project settings" in
+  `claude/README.md` and in the global `CLAUDE.md`.
+- **Audit:** the three repos under `~/projects/personal` (`ataraxia`, `nexus`, `win-configs`)
+  now have no local git config beyond remotes and branches; all use SSH remotes and the
+  `.gitattributes` template. Their remaining `settings.local.json` entries are repo-specific
+  (`WebFetch` domains, `nexus`'s vault folder).
 
 ## Open items
 
