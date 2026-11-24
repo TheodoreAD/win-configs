@@ -22,6 +22,7 @@ agent it detects and creates `.agents/skills/`. The lock file doesn't record age
 pass `-a`. Add `-g` to install for all your projects instead (`~/.claude/skills/`).
 
 The install is a copy, not a link. After editing a skill here, run the same command again.
+`npx skills update` doesn't help here: it skips skills installed from a local path.
 
 ## Install on another machine (e.g. the Linux side of herdr-remote)
 
@@ -36,6 +37,14 @@ npx skills add <github-user>/win-configs --skill herdr-remote -a claude-code -g 
 Claude there to "set up the herdr remote" or "run the herdr doctor". It finds the current
 step itself, and only asks for what lives on the other machine. Only pushed changes reach
 other machines.
+
+To pull later pushes into every skill installed from GitHub this way, run:
+
+```bash
+npx skills update -g -y
+```
+
+It reads `~/.agents/.skill-lock.json`, which records each global install and its source.
 
 ## Running the doctor without Claude
 

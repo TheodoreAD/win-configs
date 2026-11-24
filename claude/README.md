@@ -134,7 +134,9 @@ The global files above define how Claude behaves everywhere; repos add as little
   tracked `skills/<name>/SKILL.md` and install them with `npx skills add ./skills -a claude-code`,
   like [`../skills/`](../skills/README.md). The installed copies (`/.*/skills/`, `/.*/*/skills/`)
   and `skills-lock.json` are gitignored, because each machine and person may install a different
-  set. Never commit `.claude/skills/` directly.
+  set. Never commit `.claude/skills/` directly. After editing one, run the same `add` again:
+  `npx skills update` skips skills installed from a local path, and only refreshes ones installed
+  from GitHub (`npx skills update -g -y` for user-wide installs).
 
 Git has the same rule (no local config beyond the remote): see "Git defaults" in the
 [main README](../README.md).
