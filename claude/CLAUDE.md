@@ -71,6 +71,10 @@ The Bash tool is disabled on Windows (`permissions.deny` in `~/.claude/settings.
 
 ## Git Commits
 
+- **Commit as you go.** In a multi-step task, commit each step as soon as it's finished and the project's checks pass, without waiting to be asked. Don't end a task with finished work left uncommitted
+- **Every commit passes the checks.** Run the project's quality gate (e.g. `uv run invoke quality.check`) before each commit, not only the last one
+- **Personal repos work on `main`** unless the user asks for a branch
+- **Push only when asked.** Fetch first and make sure the branch isn't behind its remote
 - **One commit per meaningful change.** Split unrelated changes into separate commits, even when they were made in the same session. If one file holds changes for several concerns, commit it in stages (write the intermediate version, commit, then the next) rather than lumping concerns together
 - **Commit only your own session's changes.** Changes made by another session (another Claude Code session, another agent, or the user) are left for that session to commit. Before committing, check `git status` and `git diff` for changes this session didn't make and don't stage them, even when they're in a file this session also changed (stage only this session's hunks). Mention what was left out
 - **Descriptive messages.** `git log` should tell the story without checking anything out:
