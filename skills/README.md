@@ -1,8 +1,9 @@
 # Skills
 
 Agent skills are authored here and installed with [`npx skills`](https://github.com/vercel-labs/skills)
-wherever they're needed. Installed copies (`.claude/skills/`, `.agents/`) and `skills-lock.json`
-are gitignored: never edit or commit them, edit the source here and reinstall.
+wherever they're needed. Installed copies (`.claude/skills/`, `.agents/skills/`, ...) and
+`skills-lock.json` are gitignored, because each machine and person may install a different set:
+never edit or commit them, edit the source here and reinstall.
 
 - **[herdr-remote](herdr-remote/SKILL.md)** — Herdr desktop app with a Linux controller reaching
   this Windows machine and its WSL distro over SSH: setup steps, plus `doctor`, `status` and

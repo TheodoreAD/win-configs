@@ -130,8 +130,11 @@ The global files above define how Claude behaves everywhere; repos add as little
   the machine's paths, and Claude Code doesn't apply a hook's rewritten command for the
   PowerShell tool, only for Bash. Python projects run their tools with `uv run`, which needs no
   activated venv.
-- **Project skills** in `.claude/skills/` are fine: they're the project's workflows, not
-  settings.
+- **Project skills** are fine: they're the project's workflows, not settings. Author them in a
+  tracked `skills/<name>/SKILL.md` and install them with `npx skills add ./skills -a claude-code`,
+  like [`../skills/`](../skills/README.md). The installed copies (`/.*/skills/`, `/.*/*/skills/`)
+  and `skills-lock.json` are gitignored, because each machine and person may install a different
+  set. Never commit `.claude/skills/` directly.
 
 Git has the same rule (no local config beyond the remote): see "Git defaults" in the
 [main README](../README.md).

@@ -1,9 +1,10 @@
 ### Agent skills
 # Skills are authored in skills/ and installed with `npx skills` (see skills/README.md).
-# Installed copies, the shared .agents/ folder other agents use, and the install lock
-# are local state, never committed.
-.claude/skills/
-.agents/
+# Installed copies go into each agent's folder (.claude/skills/, .agents/skills/,
+# .windsurf/skills/, .tabnine/agent/skills/, ...). They and the install lock are local
+# state that differs per machine and per person, never committed.
+/.*/skills/
+/.*/*/skills/
 skills-lock.json
 # Personal Claude Code permissions (also in the global git ignore)
 .claude/settings.local.json
