@@ -4,7 +4,8 @@ Global Claude Code setup for this machine, set up on 2026-11-22. Copies of the f
 `~/.claude/`:
 
 - **`CLAUDE.md`** — global instructions for every project (shell, tool usage, scripting,
-  naming, Markdown, no memory)
+  naming, Markdown, no memory), installed as `~/.agents/AGENTS.md` and copied to
+  `~/.claude/CLAUDE.md`
 - **`settings.json`** — global settings; `__HOME__` is replaced with your home folder on install
 - **`status-line-max.ps1`** — the status line script (PowerShell 7, needs a Nerd Font)
 
@@ -21,18 +22,34 @@ README). Run from this repo's root:
 #                                 Claude Code
 # ============================================================================
 $ClaudeDir = "$HOME\.claude"
-New-Item -ItemType Directory -Force $ClaudeDir | Out-Null
+$AgentsDir = "$HOME\.agents"
+New-Item -ItemType Directory -Force $ClaudeDir, $AgentsDir | Out-Null
 foreach ($f in 'CLAUDE.md', 'settings.json', 'status-line-max.ps1') {
     if (Test-Path "$ClaudeDir\$f") { Copy-Item "$ClaudeDir\$f" "$ClaudeDir\$f.bak" -Force }
 }
+if (Test-Path "$AgentsDir\AGENTS.md") { Copy-Item "$AgentsDir\AGENTS.md" "$AgentsDir\AGENTS.md.bak" -Force }
+Copy-Item .\claude\CLAUDE.md "$AgentsDir\AGENTS.md"
 Copy-Item .\claude\CLAUDE.md "$ClaudeDir\CLAUDE.md"
 Copy-Item .\claude\status-line-max.ps1 "$ClaudeDir\status-line-max.ps1"
 (Get-Content .\claude\settings.json -Raw).Replace("__HOME__", $HOME.Replace("\", "/")) |
     Set-Content "$ClaudeDir\settings.json" -NoNewline
+
+# Global skills: real copies in ~/.agents/skills, one junction per skill in ~/.claude/skills
+npx skills add TheodoreAD/agent-skills -g -a universal claude-code --skill '*' -y
 ```
 
 This replaces existing files (backed up as `*.bak`). If the machine already has its own
 `settings.json`, merge the keys by hand instead.
+
+The global instructions go to two places with the same content. `~/.agents/AGENTS.md` is the
+cross-agent file, the one [power-user-linux-setup](https://github.com/TheodoreAD/power-user-linux-setup)
+deploys on Linux. `~/.claude/CLAUDE.md` is a copy of it, because Claude Code doesn't read anything
+under `~/.agents/`. A copy rather than a link: file symlinks need Developer Mode on Windows, and
+Claude Code ignores a `~/.claude/CLAUDE.md` that is a hard link in some sessions. Re-run the two
+`Copy-Item` lines after every edit. Refresh the global skills with `npx skills update -g -y`.
+
+`claude/CLAUDE.md` is meant to become a Windows fragment of power-user-linux-setup's assembled
+`AGENTS.md`, once that repo runs on Windows. Until then, this file is the source.
 
 Then quit Claude Code completely and start it again from a PowerShell 7 terminal. Check:
 
@@ -119,8 +136,9 @@ lines added/removed per session, cost per hour, session name, Herdr space/tab la
 
 The global files above define how Claude behaves everywhere; repos add as little as possible:
 
-- **Project instructions** go in the repo's `CLAUDE.md` (or `AGENTS.md`, which Claude Code also
-  reads): facts about that project, never shell or tool preferences, which are global.
+- **Project instructions** go in the repo's `AGENTS.md`, which Claude Code reads natively when
+  there's no `CLAUDE.md` in the repo or above it: facts about that project, never shell or tool
+  preferences, which are global. Don't add a `CLAUDE.md` next to it, not even as a symlink.
 - **`.claude/settings.local.json`** (gitignored) only for what's truly specific to the repo on
   this machine, such as `additionalDirectories` for folders outside it, or `WebFetch` domains
   approved while working in it. A permission useful in any repo goes in the global
@@ -146,4 +164,4 @@ Git has the same rule (no local config beyond the remote): see "Git defaults" in
 - **`/fewer-permission-prompts`** — scans past sessions for read-only commands you keep
   approving and adds them to an allowlist. Useful outside auto mode.
 - **Hooks** — deliberately not used (extra complexity, see "Per-project settings"); project
-  rules live in each repo's `CLAUDE.md`.
+  rules live in each repo's `AGENTS.md`.
