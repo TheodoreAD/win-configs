@@ -337,8 +337,10 @@ up its user, from PowerShell (not admin), in the repo root:
 # Ubuntu 24.04 as the default distro, with the dev user as the default login.
 # Safe to run again: it skips what's done and repairs what isn't.
 uv run python scripts/setup-wsl.py
-# Cap the virtual disk on first install (it can grow very large otherwise):
-#   uv run python scripts/setup-wsl.py --vhd-size 512GB
+# The virtual disk is capped at 500GB (WSL's default is 1TB), so a runaway build or log
+# inside WSL can't fill C:. An existing distro is resized, which shuts all of WSL down.
+# A different cap:
+#   uv run python scripts/setup-wsl.py --vhd-size 300GB
 # Verify only, change nothing:
 #   uv run python scripts/setup-wsl.py --check
 # Start over (destroys all data in the distro), then run the script again:

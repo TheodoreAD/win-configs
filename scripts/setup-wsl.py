@@ -5,8 +5,13 @@ by the separate Linux setup repo. Safe to run again: each step checks first and 
 already done.
 
 Steps:
-  1. Install the distro if it isn't registered (`wsl --install -d <distro> --no-launch`,
-     optionally with --vhd-size), and make it the default distro.
+  1. Install the distro if it isn't registered (`wsl --install -d <distro> --no-launch`),
+     and make it the default distro. Cap its virtual disk (--vhd-size, default 500GB; WSL's
+     own default is 1TB): set on install, resized on an existing distro (`wsl --manage
+     <distro> --resize`, after `wsl --shutdown`, which stops every distro). The disk is a
+     dynamic VHDX that grows as WSL writes, so without a cap a runaway build or log can fill
+     the Windows drive. The check warns when the cap is more than the drive holding the
+     VHDX can give it.
   2. Create the user (default `dev`) in the sudo group, with no usable password.
   3. Allow passwordless sudo for it (/etc/sudoers.d/<user>, validated with visudo).
      A sudo password inside WSL isn't a security boundary: anything running as you on Windows
@@ -15,12 +20,12 @@ Steps:
      /etc/wsl.conf is left to the Linux setup, and skip the distro's interactive first-run
      setup (RunOOBE=0), which would otherwise prompt for a user and edit /etc/wsl.conf.
   5. Restart the distro and verify: default user, passwordless sudo, default distro, no
-     pending first-run setup.
+     pending first-run setup, disk cap.
 
 Usage, from the repo root in a normal (not admin) PowerShell:
   uv run python scripts/setup-wsl.py                 # install / repair, then verify
   uv run python scripts/setup-wsl.py --check         # verify only, change nothing
-  uv run python scripts/setup-wsl.py --vhd-size 512GB
+  uv run python scripts/setup-wsl.py --vhd-size 300GB   # a different cap
 
 Needs WSL itself (`wsl --install --no-distribution` as admin, then reboot, on a fresh machine).
 """
@@ -28,9 +33,11 @@ Needs WSL itself (`wsl --install --no-distribution` as admin, then reboot, on a 
 import argparse
 import os
 import re
+import shutil
 import subprocess
 import sys
 import winreg
+from pathlib import Path
 
 LXSS = r"Software\Microsoft\Windows\CurrentVersion\Lxss"
 ENV = {**os.environ, "WSL_UTF8": "1"}  # wsl.exe prints UTF-16 otherwise
@@ -65,6 +72,7 @@ def lxss_key(distro):
                 if _value(k, "DistributionName") == distro:
                     return f"{LXSS}\\{guid}", {"DefaultUid": _value(k, "DefaultUid"),
                                                "RunOOBE": _value(k, "RunOOBE"),
+                                               "BasePath": _value(k, "BasePath"),
                                                "is_default": guid == default_guid}
     return None, None
 
@@ -80,16 +88,58 @@ def step(msg):
     print(f"- {msg}", flush=True)
 
 
+def size_bytes(text):
+    """WSL's size strings (512GB, 1TB, 300G) in bytes. WSL counts in binary units."""
+    m = re.fullmatch(r"(\d+)\s*([KMGT])B?", text.strip(), re.IGNORECASE)
+    if not m:
+        raise SystemExit(f"--vhd-size {text!r}: use a number and a unit, e.g. 500GB or 1TB")
+    return int(m[1]) * 1024 ** "KMGT".index(m[2].upper()) * 1024
+
+
+def disk_size(distro):
+    """Virtual size of the distro's root disk, in bytes (what the disk may grow to)."""
+    r = in_distro(distro, 'blockdev --getsize64 "$(findmnt -no SOURCE /)"', check=False)
+    return int(r.stdout.strip()) if r.stdout.strip().isdigit() else None
+
+
+def gib(n):
+    return f"{n / 1024 ** 3:.0f}GB"
+
+
+def host_room_warning(info, cap):
+    """The cap only protects Windows if the disk holding the VHDX can take it."""
+    vhdx = Path(os.path.expandvars(info.get("BasePath") or "")) / "ext4.vhdx"
+    if not vhdx.is_file():
+        return None
+    room = shutil.disk_usage(vhdx.anchor).free + vhdx.stat().st_size
+    if cap > room:
+        return (f"the cap ({gib(cap)}) is more than {vhdx.anchor} can give the disk ({gib(room)}: "
+                f"free space plus the VHDX's current {gib(vhdx.stat().st_size)}); a full WSL disk would "
+                f"still fill {vhdx.anchor}. Use a smaller --vhd-size or free up space.")
+    return None
+
+
 def setup(a):
     if a.distro not in registered():
         step(f"installing {a.distro} (download can take a few minutes)")
-        extra = ["--vhd-size", a.vhd_size] if a.vhd_size else []
-        wsl("--install", "-d", a.distro, "--no-launch", *extra)
+        wsl("--install", "-d", a.distro, "--no-launch", "--vhd-size", a.vhd_size)
         if a.distro not in registered():
             raise SystemExit(f"{a.distro} isn't registered after install; launch it once with "
                              f"`wsl -d {a.distro}`, then run this script again")
     else:
         step(f"{a.distro} already installed")
+
+    # Cap the virtual disk, so a runaway build or log inside WSL can't fill the Windows drive.
+    # Install sets it; an existing distro (WSL's default is 1TB) gets resized. Resizing needs
+    # the disk detached from WSL's VM, and `--terminate` leaves it attached
+    # (WSL_E_DISTRO_NOT_STOPPED), so this shuts all of WSL down, ending everything in it.
+    current = disk_size(a.distro)
+    if current is not None and current != size_bytes(a.vhd_size):
+        step(f"resizing the virtual disk {gib(current)} -> {a.vhd_size} (shuts down all of WSL)")
+        wsl("--shutdown")
+        wsl("--manage", a.distro, "--resize", a.vhd_size)
+    else:
+        step(f"virtual disk already capped at {a.vhd_size}")
 
     key, info = lxss_key(a.distro)
     if not info["is_default"]:
@@ -147,8 +197,18 @@ def verify(a):
         problems.append(f"{a.user} isn't in the sudo group")
     if "sudo-ok" not in lines:
         problems.append("passwordless sudo doesn't work")
+    size = disk_size(a.distro)
+    if size is None:
+        problems.append("couldn't read the virtual disk size")
+    elif size > size_bytes(a.vhd_size):
+        problems.append(f"the virtual disk can grow to {gib(size)}, more than the {a.vhd_size} cap "
+                        f"(run without --check to resize it)")
+    warning = host_room_warning(info, size or size_bytes(a.vhd_size))
     print(f"{a.distro}: default distro={info['is_default']}, login={lines[0] if lines else '?'}, "
-          f"groups={lines[1] if len(lines) > 1 else '?'}, passwordless sudo={'sudo-ok' in lines}")
+          f"groups={lines[1] if len(lines) > 1 else '?'}, passwordless sudo={'sudo-ok' in lines}, "
+          f"disk cap={gib(size) if size else '?'}")
+    if warning:
+        print(f"WARNING: {warning}")
     return problems
 
 
@@ -157,7 +217,9 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--distro", default="Ubuntu-24.04")
     p.add_argument("--user", default="dev")
-    p.add_argument("--vhd-size", help="cap the virtual disk on first install, e.g. 512GB")
+    p.add_argument("--vhd-size", default="500GB",
+                   help="cap on the distro's virtual disk, set on install and resized to on an "
+                        "existing distro (default 500GB; WSL's own default is 1TB)")
     p.add_argument("--check", action="store_true", help="only verify, change nothing")
     a = p.parse_args()
     if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,31}", a.user):
