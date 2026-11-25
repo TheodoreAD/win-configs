@@ -3,9 +3,6 @@
 Global Claude Code setup for this machine, set up on 2026-11-22. Copies of the files in
 `~/.claude/`:
 
-- **`CLAUDE.md`** — global instructions for every project (shell, tool usage, scripting,
-  naming, Markdown, no memory), installed as `~/.agents/AGENTS.md` and copied to
-  `~/.claude/CLAUDE.md`
 - **`settings.json`** — global settings; `__HOME__` is replaced with your home folder on install
 - **`status-line-max.ps1`** — the status line script (PowerShell 7, needs a Nerd Font)
 
@@ -22,17 +19,16 @@ README). Run from this repo's root:
 #                                 Claude Code
 # ============================================================================
 $ClaudeDir = "$HOME\.claude"
-$AgentsDir = "$HOME\.agents"
-New-Item -ItemType Directory -Force $ClaudeDir, $AgentsDir | Out-Null
-foreach ($f in 'CLAUDE.md', 'settings.json', 'status-line-max.ps1') {
+New-Item -ItemType Directory -Force $ClaudeDir | Out-Null
+foreach ($f in 'settings.json', 'status-line-max.ps1') {
     if (Test-Path "$ClaudeDir\$f") { Copy-Item "$ClaudeDir\$f" "$ClaudeDir\$f.bak" -Force }
 }
-if (Test-Path "$AgentsDir\AGENTS.md") { Copy-Item "$AgentsDir\AGENTS.md" "$AgentsDir\AGENTS.md.bak" -Force }
-Copy-Item .\claude\CLAUDE.md "$AgentsDir\AGENTS.md"
-Copy-Item .\claude\CLAUDE.md "$ClaudeDir\CLAUDE.md"
 Copy-Item .\claude\status-line-max.ps1 "$ClaudeDir\status-line-max.ps1"
 (Get-Content .\claude\settings.json -Raw).Replace("__HOME__", $HOME.Replace("\", "/")) |
     Set-Content "$ClaudeDir\settings.json" -NoNewline
+
+# Global instructions: assembled and deployed by power-user-linux-setup, cloned next to this repo
+uv run --directory ..\power-user-linux-setup invoke deploy.all --name agents-md --yes
 
 # Global skills: real copies in ~/.agents/skills, one junction per skill in ~/.claude/skills
 npx skills add TheodoreAD/agent-skills -g -a universal claude-code --skill '*' -y
@@ -41,15 +37,16 @@ npx skills add TheodoreAD/agent-skills -g -a universal claude-code --skill '*' -
 This replaces existing files (backed up as `*.bak`). If the machine already has its own
 `settings.json`, merge the keys by hand instead.
 
-The global instructions go to two places with the same content. `~/.agents/AGENTS.md` is the
-cross-agent file, the one [power-user-linux-setup](https://github.com/TheodoreAD/power-user-linux-setup)
-deploys on Linux. `~/.claude/CLAUDE.md` is a copy of it, because Claude Code doesn't read anything
-under `~/.agents/`. A copy rather than a link: file symlinks need Developer Mode on Windows, and
-Claude Code ignores a `~/.claude/CLAUDE.md` that is a hard link in some sessions. Re-run the two
-`Copy-Item` lines after every edit. Refresh the global skills with `npx skills update -g -y`.
-
-`claude/CLAUDE.md` is meant to become a Windows fragment of power-user-linux-setup's assembled
-`AGENTS.md`, once that repo runs on Windows. Until then, this file is the source.
+**The global instructions are not in this repo.** They come from
+[power-user-linux-setup](https://github.com/TheodoreAD/power-user-linux-setup), which assembles
+`~/.agents/AGENTS.md` from its `config/agents-md/` fragments for each platform: the same
+cross-platform rules as on Linux, plus the Windows-only ones (PowerShell 7, the built-in-tool table,
+scripting) from `bash.windows.md` and `git.windows.md`. It then copies the file to
+`~/.claude/CLAUDE.md`, because Claude Code reads nothing under `~/.agents/`. Edit a fragment there,
+never the deployed files, and re-run the `deploy.all` line above; `deploy.status` shows drift.
+On a machine where `~/.claude/CLAUDE.md` already exists from before, the deploy leaves it alone
+rather than overwrite content it didn't write: move it aside and re-run. Refresh the global skills
+with `npx skills update -g -y`.
 
 Then quit Claude Code completely and start it again from a PowerShell 7 terminal. Check:
 
@@ -63,7 +60,7 @@ Then quit Claude Code completely and start it again from a PowerShell 7 terminal
 - **`"env": { "CLAUDE_CODE_USE_POWERSHELL_TOOL": "1" }`** — turns on Claude's PowerShell tool
   explicitly (it was already on by default; this guards against the default changing).
 - **`"permissions": { "deny": ["Bash"] }`** — removes Claude's Bash (Git Bash) tool, so every
-  shell command Claude runs goes through PowerShell 7. The `CLAUDE.md` rule alone wasn't enough:
+  shell command Claude runs goes through PowerShell 7. The instructions' rule alone wasn't enough:
   Claude still used Bash when it judged it simpler. Only affects Windows: Claude Code inside WSL
   reads `~/.claude` in the Linux home, which is separate.
 - **`"allow": ["PowerShell(uv run invoke *)"]`** — runs project tasks without asking, in every

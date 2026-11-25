@@ -414,8 +414,9 @@ port has no authentication, so only processes on this machine can use it, but an
 
 ## Claude Code
 
-Global `CLAUDE.md`, `settings.json` (PowerShell 7 as Claude's shell, status line) and the status
-line script: see [claude/README.md](claude/README.md). How Claude's shell relates to your
+`settings.json` (PowerShell 7 as Claude's shell, status line), the status line script, and how the
+global instructions get deployed from power-user-linux-setup: see
+[claude/README.md](claude/README.md). How Claude's shell relates to your
 profile and the Unix tools: [docs/claude-windows-tools.md](docs/claude-windows-tools.md).
 
 ## Herdr

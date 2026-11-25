@@ -32,7 +32,8 @@ to remove them so the GNU tools would run instead. That was dropped on 2026-11-2
   (icons in `Get-ChildItem` output) need the aliases.
 - `curl`, `wget` and `sc` aren't aliases in PowerShell 7 at all, so removing them did nothing.
 
-Rules that follow from this (also in the global `CLAUDE.md`):
+Rules that follow from this (also in the global instructions, power-user-linux-setup's
+`config/agents-md/bash.windows.md`):
 
 - **Commands Claude runs or suggests use full cmdlet names** (`Get-ChildItem`, `Get-Content`,
   `Where-Object`, `Remove-Item`, ...), so they work the same in both shells.
@@ -79,8 +80,8 @@ ask for the passphrase. Not worth fixing since PowerShell is the shell everywher
 - **`uv`** — Python scripts (`uv run`), see the main README
 - **`gh`** — GitHub, logged in with SSH as the git protocol
 
-Claude prefers its own Read/Write/Edit/Glob/Grep tools over all of these; see the global
-`CLAUDE.md`.
+Claude prefers its own Read/Write/Edit/Glob/Grep tools over all of these; see "The shell on the
+Windows machine" in the global instructions.
 
 ## Verifying
 
