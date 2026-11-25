@@ -6,7 +6,9 @@
       "PowerShell(uv run invoke *)"
     ],
     "ask": [
-      "WebFetch"
+      "WebFetch",
+      "Artifact",
+      "mcp__claude_ai_Claude_Docs"
     ],
     "deny": [
       "Bash"

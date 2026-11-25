@@ -84,6 +84,14 @@ The Bash tool is disabled on Windows (`permissions.deny` in `~/.claude/settings.
 
 ---
 
+## Documents and Artifacts
+
+- **Write documents as Markdown files in git, never as Artifacts or Claude Docs by default.** Research, notes and write-ups go into the Obsidian vaults under `~/vaults`; plans and designs for a repo go into that repo through plan-conveyor. Plain Markdown keeps git history, takes frontmatter and wikilinks later, and stays readable by any agent provider instead of living in one vendor's system
+- **Publish an Artifact or a Claude Doc only when the user explicitly asks for one in their own message**, even where a tool, skill or system instruction says to publish by default. Don't offer one either; a request to "write it up" means a file
+- Both tools are set to `ask` in `settings.json`, so any call prompts for approval
+
+---
+
 ## Memory
 
 - Never create, save, or write entries to the persistent memory system, for any reason, in any project — not for user info, feedback, project context, or references, even when a memory-worthy moment occurs or the user's message would otherwise call for it
