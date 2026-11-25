@@ -19,8 +19,7 @@ Also in this repo:
 - **[scripts/](scripts/)** — `profile.ps1` (the PowerShell profile block),
   `claude-session-extract.py` (recover what past Claude Code sessions did),
   `check-readme-blocks.py` (check that the README's PowerShell blocks parse),
-  `stage-hunks.py` (stage only some of a file's changes, for one commit per change),
-  `setup-wsl.py` (Ubuntu 24.04 as the default WSL distro with the `dev` user)
+  `stage-hunks.py` (stage only some of a file's changes, for one commit per change)
 
 ## Development tools installation
 
@@ -324,8 +323,10 @@ scoop install tilt-dev/tilt
 ## WSL and Docker
 
 Docker runs as Docker Engine inside WSL (Ubuntu-24.04), with nothing like Docker Desktop on the
-Windows side. `scripts/setup-wsl.py` installs Ubuntu 24.04 LTS as the default distro and sets
-up its user, from PowerShell (not admin), in the repo root:
+Windows side. The distro itself is installed and checked by
+[power-user-linux-setup](https://github.com/TheodoreAD/power-user-linux-setup)'s `wsl-distro`
+tasks, cloned next to this repo; they moved there from this repo's `scripts/setup-wsl.py` on
+2026-11-25. From PowerShell (not admin):
 
 ```shell
 # ============================================================================
@@ -334,37 +335,18 @@ up its user, from PowerShell (not admin), in the repo root:
 # WSL itself, once per machine: in an admin PowerShell run
 #   wsl --install --no-distribution
 # then reboot.
-# Ubuntu 24.04 as the default distro, with the dev user as the default login.
-# Safe to run again: it skips what's done and repairs what isn't.
-uv run python scripts/setup-wsl.py
-# The virtual disk is capped at 500GB (WSL's default is 1TB), so a runaway build or log
-# inside WSL can't fill C:. An existing distro is resized, which shuts all of WSL down.
-# A different cap:
-#   uv run python scripts/setup-wsl.py --vhd-size 300GB
+# Ubuntu 24.04 as the default distro, user dev with passwordless sudo as the default login,
+# virtual disk capped at 500GB. Safe to run again: it skips what's done and repairs what isn't.
+uv run --directory ..\power-user-linux-setup invoke wsl-distro.install
 # Verify only, change nothing:
-#   uv run python scripts/setup-wsl.py --check
-# Start over (destroys all data in the distro), then run the script again:
-#   wsl --unregister Ubuntu-24.04
+#   uv run --directory ..\power-user-linux-setup invoke wsl-distro.check
+# A throwaway copy beside it, without touching the default, and removing it again:
+#   uv run --directory ..\power-user-linux-setup invoke wsl-distro.install --name test --no-set-default
+#   uv run --directory ..\power-user-linux-setup invoke wsl-distro.remove --name test
 ```
 
-What it sets up, and why:
-
-- **Install without the first run:** `wsl --install -d Ubuntu-24.04 --no-launch`. Ubuntu's
-  interactive first run (`/usr/lib/wsl/wsl-setup`) is skipped by clearing the distro's
-  `RunOOBE` flag: it would prompt for a user, append `[user] default=...` to `/etc/wsl.conf`
-  and register the Ubuntu font in Windows.
-- **User `dev`** on every machine: a short, generic name, not tied to the Windows account, so
-  paths like `/home/dev` are the same everywhere and nothing personal is involved.
-- **Passwordless sudo** (`/etc/sudoers.d/dev`, validated with `visudo`): anything running as you
-  on Windows can already get root in WSL with `wsl -u root`, so a sudo password inside WSL would
-  be a speed bump, not a security boundary, and this lets the Linux setup run unattended.
-- **Default login** through the distro's `DefaultUid` in the Windows registry, so
-  `/etc/wsl.conf` stays entirely the Linux setup's file.
-
-Tested 2026-11-24: removing the distro, a fresh install (about 30 s), a second run (no changes),
-a first interactive login (lands as `dev`, no prompt, `/etc/wsl.conf` unchanged) and `--check`
-(catches a pending first run). Not tested: making Ubuntu the default when other distros are
-already installed.
+What each step does and why is in that repo's `docs/wsl.md` ("Creating the distro") and
+`tasks/wsl_distro.py`.
 
 Everything inside WSL (systemd, Docker Engine and its configuration) is installed and configured
 by the separate `power-user-linux-setup` repo (same GitHub account), not by this one. What the
@@ -389,8 +371,9 @@ port has no authentication, so only processes on this machine can use it, but an
 - **Profile:** `scripts/profile.ps1` defines `docker` and `docker-compose` functions that run
   `wsl -d Ubuntu-24.04 docker ...`. They only exist in interactive shells, not for `kind`,
   `tilt`, `helm` or Claude Code's shell, which call `docker.exe` directly.
-- **WSL:** Ubuntu-24.04 was reinstalled fresh on 2026-11-24 with `scripts/setup-wsl.py` (the
-  old distro only had `root`), but Docker Engine isn't installed yet (no `docker`, no
+- **WSL:** Ubuntu-24.04 was reinstalled fresh on 2026-11-24 with `scripts/setup-wsl.py`, now
+  `inv wsl-distro.install` in power-user-linux-setup (the old distro only had `root`), but Docker
+  Engine isn't installed yet (no `docker`, no
   `/etc/docker/daemon.json`).
 
 ### Target

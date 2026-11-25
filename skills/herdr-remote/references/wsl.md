@@ -17,15 +17,15 @@ keeps stdin and stdout connected for hc's protocol.
 If `doctor` says `WSL default user — root`, fix this first. Otherwise every Herdr terminal
 in WSL runs as root.
 
-If the `win-configs` repo is checked out on Windows, its setup script does it all. Run it
-from the repo root, in a normal (not admin) PowerShell:
+If the `power-user-linux-setup` repo is checked out on Windows, its `wsl-distro` tasks do it
+all. Run them from that repo's root, in a normal (not admin) PowerShell:
 
 ```powershell
-uv run python scripts/setup-wsl.py --check    # what's missing, changes nothing
-uv run python scripts/setup-wsl.py            # creates user dev with passwordless sudo, makes it the default
+uv run invoke wsl-distro.check      # what's missing, changes nothing
+uv run invoke wsl-distro.install    # creates user dev with passwordless sudo, makes it the default
 ```
 
-It takes `--distro` and `--user` if the names differ. It sets the default user in the
+They take `--name` and `--user` if the names differ. It sets the default user in the
 Windows registry and leaves `/etc/wsl.conf` alone. Then go on to step 1.
 
 Without the repo, do it by hand. Run this in PowerShell on Windows:
