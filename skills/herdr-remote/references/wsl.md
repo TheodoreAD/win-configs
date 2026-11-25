@@ -55,14 +55,18 @@ That's a common way the `[user]` line gets lost.
 
 ## 1. Install the bridge in WSL
 
-Run this on Windows, from the skill's folder:
+Run this on Windows, in a normal (not admin) shell. It writes the file as WSL's root
+through `wsl -u root`, which needs no Windows elevation:
 
 ```powershell
-wsl -d Ubuntu-24.04 -u root -e sh -c 'install -m 755 "$(wslpath "$1")" /usr/local/bin/hc-via-b64' _ (Resolve-Path assets\hc-via-b64)
+python -I <skill>\scripts\wsl-bridge.py install   # copies assets/hc-via-b64 in, then tests it as the default user
+python -I <skill>\scripts\wsl-bridge.py check     # installed, same as the skill's copy, answers?
+python -I <skill>\scripts\wsl-bridge.py remove    # teardown; touches nothing else in WSL
 ```
 
-The file must have LF line endings; the skill's copy has. If it was edited on Windows and
-has CRLF, fix it with `sed -i 's/\r$//' /usr/local/bin/hc-via-b64`.
+Each takes `--distro`. Repeating one is safe: `install` skips an identical file and `remove`
+skips a missing one. Reinstalling the distro removes the bridge, so run `install` again
+afterwards. The script writes the file with LF line endings, even from a CRLF checkout.
 
 ## 2. Install the wrapper on Linux
 

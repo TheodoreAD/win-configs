@@ -135,7 +135,10 @@ How to work through it with the user:
 
 ## Files
 
-- **`scripts/herdr-remote.py`** — doctor, status and key-line
+- **`scripts/herdr-remote.py`** — doctor, status, handoff and key-line
+- **`scripts/wsl-bridge.py`** — install, check or remove the WSL bridge, on Windows. It's the
+  one script that changes state, and the change stays inside WSL; repeatable for
+  setup/teardown runs.
 - **`assets/hc-via-b64`** — the WSL bridge. Goes to `/usr/local/bin/hc-via-b64` inside WSL.
 - **`assets/herdr-via-wsl`** — the Linux wrapper used as Herdr's `--via` command. Goes to `~/.local/bin/` on Linux.
 - **`references/`** — the setup phases and troubleshooting

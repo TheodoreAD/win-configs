@@ -533,10 +533,10 @@ def windows_wsl_checks(r: Report, distro: str) -> None:
         b64 = base64.b64encode(b"echo bridge-ok").decode()
         c2, o2, e2 = run(["wsl.exe", "-d", distro, "-e", BRIDGE_PATH, b64], 30, env=env)
         r.add(OK if "bridge-ok" in o2 else FAIL, "WSL bridge works", o2 or e2,
-              f"reinstall it: references/wsl.md, step 1")
+              "`python -I <skill>\\scripts\\wsl-bridge.py install` (references/wsl.md, step 1)")
     else:
         r.add(FAIL, "WSL bridge installed", f"{BRIDGE_PATH} missing" if code == 0 else (err or "wsl.exe failed"),
-              "references/wsl.md, step 1")
+              "`python -I <skill>\\scripts\\wsl-bridge.py install` (references/wsl.md, step 1)")
     hc_ver = facts.get("hc", "none")
     r.facts.update(distro=distro, wsl_user=wsl_user, bridge=facts.get("bridge") == "yes", wsl_hc=hc_ver)
     r.add(OK if hc_ver != "none" else WARN, "hc inside WSL", hc_ver,

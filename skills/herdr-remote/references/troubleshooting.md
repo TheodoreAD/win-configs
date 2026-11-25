@@ -71,7 +71,8 @@ the controller's `hc` across and restarts that core; its terminals keep running.
 
 1. **The by-hand test.** Run it from `wsl.md` step 3; it isolates the problem.
 2. **`usage: hc-via-b64`, or `not found`.** The bridge is missing or has CRLF line
-   endings (`wsl.md` step 1).
+   endings, for example after the distro was reinstalled. On Windows, `wsl-bridge.py check`
+   tells which, and `wsl-bridge.py install` fixes both (`wsl.md` step 1).
 3. **`There is no distribution with the supplied name`.** The distro name in the `--via`
    command is wrong. On Windows, `wsl -l -q` lists the names. Remove the machine and add
    it again with the right name.
