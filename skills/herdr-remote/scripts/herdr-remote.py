@@ -820,7 +820,7 @@ def handoff(args) -> int:
         wsl += f"  (WSL's default user is root; that's fixed on Windows, wsl.md step 0, before adding {wsl_machine})\n"
     fails = [c.name for c in r.checks if c.status == FAIL]
     print(f"""If the herdr-remote skill isn't installed on this machine yet, install it first:
-  npx skills add {skill_source()} --skill herdr-remote -a claude-code -g -y
+  npx skills add {skill_source()} --skill herdr-remote -a universal claude-code -g -y
 
 Use the herdr-remote skill to set up this Linux machine as the Herdr controller for my
 Windows PC {host} (and its WSL), following its linux-controller.md and wsl.md. Do
