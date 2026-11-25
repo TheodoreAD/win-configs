@@ -169,6 +169,29 @@ possible.
   `.gitattributes` template. Their remaining `settings.local.json` entries are repo-specific
   (`WebFetch` domains, `nexus`'s vault folder).
 
+## 2026-11-25: uv data moved under scoop
+
+- **Why:** scoop's uv package persists uv's data since 0.11.16: its manifest sets
+  `UV_PYTHON_INSTALL_DIR`, `UV_PYTHON_BIN_DIR`, `UV_TOOL_DIR`, `UV_TOOL_BIN_DIR` and
+  `UV_CACHE_DIR` to `~\scoop\persist\uv\`, and doesn't move what was already installed ("You may
+  need to move data by yourself"). This machine went from 0.10.9 to 0.13.9 across that change, so
+  the Pythons (`%APPDATA%\uv\python`), the global `invoke` tool (`%APPDATA%\uv\tools`), their
+  launchers (`~\.local\bin`) and the cache (`%LOCALAPPDATA%\uv\cache`) were orphaned: they still
+  ran from PATH, but `uv python list` / `uv tool list` no longer saw them.
+- **Moving it:** install again into the new folders (`uv python install ...`, `uv tool install
+  ...`), then remove the old copies with uv itself, pointed at the old folders for one command:
+  `$env:UV_PYTHON_INSTALL_DIR = "$env:APPDATA\uv\python"; $env:UV_PYTHON_BIN_DIR =
+  "$HOME\.local\bin"; uv python uninstall --all` (likewise `UV_TOOL_DIR` / `UV_TOOL_BIN_DIR` with
+  `uv tool uninstall <name>`, and `UV_CACHE_DIR` with `uv cache clean`). An uninstall fails with
+  "Access is denied" while a process still runs from that Python.
+- **Venvs:** a venv records its base Python's path, and `uv sync` doesn't notice when that Python
+  is gone. Recreate each one: `uv venv --clear` then `uv sync` (with the groups it had, e.g.
+  `--group art` for `ataraxia`); `nexus` has no `pyproject.toml`, so `uv venv --clear --seed` and
+  `uv pip install -r requirements.txt`.
+- **Global invoke replaced by repo-tasks:** `uv tool install invoke` is gone from the README;
+  `repo-tasks` provides `inv`/`invoke` (Invoke 3), and a second global invoke would shadow or be
+  shadowed by it.
+
 ## Open items
 
 - **Docker target** (above), once the Linux setup project (`power-user-linux-setup`) has run in

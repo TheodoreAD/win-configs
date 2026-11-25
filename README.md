@@ -269,11 +269,15 @@ gh config set git_protocol ssh
 # we don't install python separately, we let uv handle it
 #scoop install main/python
 scoop install main/uv
-uv python install 3.11 
-uv python install 3.12
-uv python install 3.13
+# scoop's uv (since its 0.11.16 package) sets UV_PYTHON_INSTALL_DIR, UV_TOOL_DIR and
+# the other UV_* folders to ~\scoop\persist\uv\. Anything uv put in its old defaults
+# (%APPDATA%\uv, %LOCALAPPDATA%\uv, ~\.local\bin) is invisible to it after that; see
+# "uv data moved under scoop" in docs/setup-log-2026-11.md for moving it.
+uv python install 3.11 3.12 3.13
 uv python install 3.14 --default
-uv tool install invoke --with python-dotenv
+# Global invoke comes with repo-tasks (the task collection the personal repos share);
+# don't also `uv tool install invoke`, or two inv.exe end up on PATH.
+uv tool install --with-executables-from invoke 'repo-tasks @ git+https://github.com/TheodoreAD/repo-tasks'
 # ============================================================================
 #                              Node.js & npm (via fnm)
 # ============================================================================
