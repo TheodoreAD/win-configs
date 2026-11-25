@@ -12,6 +12,8 @@ Files in this folder:
 - **`layouts/estro.json`** — munza's Estro layout with the Linear issues panel swapped for
   jankeesvw's GitHub issues mod (4 lines changed, see below)
 - **`layouts/estro-issues.svg`** — icon for the Issues button (Branch Issue's `issue.svg`)
+- **`patches/better-tabs-launch-names.patch`** — local fix so + menu agent tabs follow the
+  session's title (see below)
 
 ## Two products, don't mix them up
 
@@ -216,6 +218,28 @@ Notes on these steps:
   from main" shows up).
 - **`Ctrl+Shift+L`** switches back to the `main` layout.
 
+### Better Tabs: name agent tabs after the session (local patch)
+
+Better Tabs names a tab after what runs in it: for Claude Code, the terminal title, which is the
+session's topic ("Gitignore for vault files") or its `/rename` name. Tabs started from the **+**
+menu never got it: the menu creates the tab already named "Claude Code", and on Better Tabs'
+first look the pane still reports the shell the agent starts in. The name then matches nothing
+the pane could have given, so Better Tabs took it for one you typed and never renamed the tab.
+
+`patches/better-tabs-launch-names.patch` treats a tab name equal to a startable agent's name
+(`knownAgents()`, the names the + menu uses) as Herdr's own, so the tab follows the session's
+title from then on. A name you type is still kept. Apply it after every re-copy of the mod:
+
+```powershell
+$m = "$HOME\.config\herdr-app\mods\better-tabs"
+# --ignore-whitespace: the mod's files are CRLF on Windows, the patch is LF
+git -C $m apply --ignore-whitespace "$PWD\herdr\patches\better-tabs-launch-names.patch"
+herdr-app check $m
+```
+
+A tab already stuck on "Claude Code" (or any name you set): rename it to nothing
+(`F2`, clear, Enter) and it goes back to following the session.
+
 ### Better Changes: limit the file list to 100
 
 The Changes panel hangs ("This view could not be re-rendered ... interrupted", stuck on
@@ -271,7 +295,8 @@ Not done yet, in rough order:
 
 1. **Report upstream to munza/herdr-mods:** the Better Files / Better Config curly-quote
    quoting bug (cause, affected files, one-line fix) and the Changes list drawing every row
-   (hangs past a few hundred changed files; needs a virtualized list).
+   (hangs past a few hundred changed files; needs a virtualized list), and Better Tabs locking
+   + menu agent tabs on the agent's name (`patches/better-tabs-launch-names.patch`).
 2. **Report upstream to scoop-nerd-fonts:** the pre-uninstall rename check can never pass while
    the font is registered, because the System process holds every user font for the session
    (see the Fonts section in the main README).
