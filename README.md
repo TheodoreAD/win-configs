@@ -19,7 +19,9 @@ Also in this repo:
 - **[scripts/](scripts/)** — `profile.ps1` (the PowerShell profile block),
   `claude-session-extract.py` (recover what past Claude Code sessions did),
   `check-readme-blocks.py` (check that the README's PowerShell blocks parse),
-  `stage-hunks.py` (stage only some of a file's changes, for one commit per change)
+  `stage-hunks.py` (stage only some of a file's changes, for one commit per change),
+  `set-refresh.py` (list or switch the display's refresh rate, e.g. 30 Hz on the desktop and
+  165 Hz for games)
 
 ## Development tools installation
 
