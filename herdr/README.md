@@ -35,6 +35,8 @@ Files in this folder:
    powershell -c "irm https://releases.herdr.dev/app/install.ps1 | iex"
    ```
 
+   On Linux, see [On Linux](#on-linux) instead.
+
 2. Start it once so it creates `~/.config/herdr-app/`.
 3. Read `~/.config/herdr-app/AGENTS.md`. It's the full manual for agents working on the config
    (layouts, `keys.json`, `settings.json`, mods, the `herdr-app` CLI). Ask Claude to read it first
@@ -288,6 +290,82 @@ folders doesn't clean up (all harmless):
 - **branch-pr** — worktrees under `~/.herdr/worktrees/`, `branch.<name>.herdr-pr` entries in
   each repo's git config
 - **better-config** — backups in `~/.config/herdr-mods/`
+
+## On Linux
+
+The same settings, layout and mods on a Linux machine, until they move to a more organized
+place. The Linux setup repo (`power-user-linux-setup`) provides the prerequisites: `git`, `gh`
+logged in, Go, `python3` and the Nerd Font. Written from the Windows steps and the upstream
+installers. **Not tested on Linux yet.**
+
+Install the app with the one-liner from [herdr.dev/download](https://herdr.dev/download/)
+(x86_64 and arm64; needs `curl` and `tar`; no root). It installs to
+`~/.local/share/herdr-app`, puts `herdr-app` in `~/.local/bin`, adds a launcher entry, and
+installs `herdr-core` and `hc` to `~/.local/bin` if they aren't there. Running it again updates
+the app.
+
+```bash
+curl -fsSL https://releases.herdr.dev/app/install.sh | sh
+```
+
+Start the app once so it creates `~/.config/herdr-app/`, then run the rest from a clone of this
+repo (`gh repo clone win-configs` clones your own copy):
+
+```bash
+# ============================================================================
+#                       Herdr on Linux: settings, Estro + mods
+# ============================================================================
+set -e
+h=~/.config/herdr-app
+# 1. Back up the whole config (restoring this folder undoes everything below)
+cp -a "$h" ~/.config/herdr-app-backup-"$(date +%F)"
+rm -f ~/.config/herdr-app-backup-"$(date +%F)"/herdr-app.sock
+# 2. Settings (check the font is installed first: fc-list | grep -i caskaydia)
+cp herdr/settings.json "$h/settings.json"
+# 3. Clone the reviewed commits (not the latest code; review again before bumping)
+src=$(mktemp -d)
+git clone --quiet https://github.com/munza/herdr-mods "$src/munza"
+git -C "$src/munza" checkout --quiet 1abf4870adb4c3f7a71739db1e0c29493f5e3f95
+git clone --quiet https://github.com/jankeesvw/herdr-issues "$src/issues"
+git -C "$src/issues" checkout --quiet 15ffaad00d37efe17ef952109a3198fe299ecb67
+# 4. Copy the mod folders (never overwrite an existing mod of the same name)
+for m in "$src"/munza/better-icons/mods/better-icons "$src"/munza/better-sidebar/mods/better-sidebar \
+         "$src"/munza/better-tabs/mods/better-tabs "$src"/munza/better-files/mods/better-files \
+         "$src"/munza/better-changes/mods/better-changes "$src"/munza/better-config/mods/better-config \
+         "$src"/issues/mods/issues; do
+    if [ -e "$h/mods/$(basename "$m")" ]; then echo "exists, skipped: $m"; else cp -a "$m" "$h/mods/"; fi
+done
+# 5. Build and install Branch PR (Go helper -> mods/branch-pr/bin/herdr-pr)
+GOTOOLCHAIN=local go -C "$src/munza/branch-pr/helper" run ./install
+# 6. The Estro layout from this repo and its icon
+cp herdr/layouts/estro.json herdr/layouts/estro-issues.svg "$h/layouts/"
+# 7. Local patch: + menu agent tabs follow the session title (see Better Tabs above)
+git -C "$h/mods/better-tabs" apply "$PWD/herdr/patches/better-tabs-launch-names.patch"
+# 8. Better Changes: show at most 100 files (see above)
+python3 -c 'import json,sys; p=sys.argv[1]; j=json.load(open(p)); j.setdefault("settings",{}).setdefault("limits",{})["files"]=100; json.dump(j,open(p,"w"),indent=2)' "$h/mods/better-changes/mod.json"
+# 9. Check every mod, then switch layout
+for n in better-icons better-sidebar better-tabs better-files better-changes better-config branch-pr issues; do
+    herdr-app check "$h/mods/$n"
+done
+herdr-app do layout.switch '{"name":"estro"}'
+herdr-app status
+rm -rf "$src"
+```
+
+Differences from Windows:
+
+- **Terminals** open in your login shell (`$SHELL`), not PowerShell.
+- **Better Files on Linux:** file names reach the shell as separate arguments, so the Windows
+  quoting bug doesn't apply. But its "open", "open in editor", "reveal" and search actions call
+  the macOS commands `open` and `mdfind`, so expect those to fail on Linux (on Debian and
+  Ubuntu, `open` is a different program, `openvt`). Browsing and the Markdown preview don't use
+  them.
+- **Better Alerts** (skipped on Windows) uses `notify-send`, so it would work here. Not
+  reviewed or installed; it's in the same munza commit if wanted.
+- **`zoom` 1.2** in `settings.json` suits the Windows machine's display; adjust in Settings if
+  the Linux screen differs.
+- **Connecting to the Windows machine:** the `herdr-remote` skill, started from
+  `herdr-remote.py handoff` on Windows.
 
 ## Follow-up plan
 
