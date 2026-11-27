@@ -58,7 +58,7 @@ import sys
 import time
 from pathlib import Path
 
-NOT_USERS = {"public", "default", "default user", "all users", "guest", "defaultapppool"}
+NOT_USERS = {"public", "default", "default user", "all users", "guest", "defaultapppool", "defaultuser0"}
 # Folders under a profile where games keep saves; `gaps` lists their children.
 SAVE_PARENTS = ["Saved Games", "Documents", "Documents/My Games", "AppData/Roaming",
                 "AppData/LocalLow", "AppData/Local"]
@@ -173,6 +173,7 @@ class Archive:
         cfg = json.loads(r.stdout)
         scope = Path(t["scope"])
         others = [Path(o["scope"]) for n, o in self.targets().items() if n != name]
+        others += [Path(s) for s in t.get("skip", [])]  # nested copies handled elsewhere
         flt = cfg["backup"]["filter"]
         flt["ignoredPaths"] = outside(scope, others)
         if t["kind"] == "old-drive":
@@ -249,11 +250,13 @@ def cmd_add_old_drive(a, arc: Archive) -> None:
     drive = Path(a.drive)
     if not (drive / "Users").is_dir():
         die(f"{drive} has no Users folder; point --drive at the old drive's root")
-    add_target(arc, a.name, {"kind": "old-drive", "scope": slash(drive), "installs": [slash(i) for i in a.installs]})
+    add_target(arc, a.name, {"kind": "old-drive", "scope": slash(drive), "installs": [slash(i) for i in a.installs],
+                             "skip": [slash(s) for s in a.skip]})
 
 
 def cmd_add_live(a, arc: Archive) -> None:
-    add_target(arc, a.name, {"kind": "live", "scope": slash(Path(a.scope)), "installs": [slash(i) for i in a.installs]})
+    add_target(arc, a.name, {"kind": "live", "scope": slash(Path(a.scope)), "installs": [slash(i) for i in a.installs],
+                             "skip": [slash(s) for s in a.skip]})
 
 
 def cmd_preview(a, arc: Archive) -> None:
@@ -275,7 +278,7 @@ INSTALL_SAVE_DIRS = {"save", "saves", "savedata", "savegame", "savegames", "save
                      "userdata", "storage"}
 INSTALL_SAVE_FILE = re.compile(r"(^save[^.]*\.[a-z0-9]+$)|\.(sav|save|savegame|rvdata2|psv|sl2)$", re.I)
 # Game assets and code whose names start with "save" (a save-screen script, a "saved" icon).
-MEDIA_EXTS = {".ogg", ".wav", ".mp3", ".png", ".jpg", ".dds", ".xnb", ".dll", ".exe", ".pdb", ".ico", ".lua",
+MEDIA_EXTS = {".ogg", ".wav", ".mp3", ".png", ".jpg", ".dds", ".xnb", ".dll", ".exe", ".pdb", ".ico", ".lua", ".bat", ".cmd",
               ".js", ".ini", ".txt", ".xml", ".json", ".cs", ".py", ".tex", ".bmp", ".gif"}
 
 
@@ -285,6 +288,7 @@ def install_save_hits(game: Path, depth: int = 4) -> list[str]:
     for r, ds, fs in os.walk(game):
         if len(Path(r).parts) - base >= depth:
             ds[:] = []
+        ds[:] = [d for d in ds if d.lower() != "streamingassets"]  # Unity ships game data here
         for d in ds:
             p = Path(r) / d
             if d.lower() in INSTALL_SAVE_DIRS and any(f for _, _, f in os.walk(p)):
@@ -313,7 +317,12 @@ def cmd_gaps(a, arc: Archive) -> None:
             base = prof / parent
             if not base.is_dir():
                 continue
-            for child in sorted(base.iterdir(), key=lambda p: p.name.lower()):
+            try:
+                children = sorted(base.iterdir(), key=lambda p: p.name.lower())
+            except OSError as e:
+                print(f"  unreadable: {base} ({e.strerror})")
+                continue
+            for child in children:
                 rel = f"{parent}/{child.name}".lower()
                 if not child.is_dir() or child.is_symlink() or child.name.lower() in GENERIC_NOT_SAVES \
                         or rel in not_saves:
@@ -417,7 +426,8 @@ NOISE_DIRS = {"unity", "analytics", "logs", "log", "crashes", "crashreports", "c
 # Where a copy came from. Evidence only: a store's own install records or markers, or the
 # traces a cracked release leaves. What it can't tell is "unknown"; custom-games.json's
 # "acquired" map overrides it per game.
-EMULATOR_DIRS = {"codex", "skidrow", "smartsteamemu", "ali213", "3dmgame", "goldberg", "steamemu"}
+EMULATOR_DIRS = {"codex", "skidrow", "smartsteamemu", "ali213", "3dmgame", "goldberg", "steamemu",
+                 "goldberg steamemu saves"}
 CRACK_FILES = {"steam_emu.ini", "smartsteamemu.ini", "smartsteamemu.dll", "codex.ini", "steam_api.cdx",
                "steam_api64.cdx", "ali213.ini", "3dmgame.ini", "3dmgame.dll", "cream_api.ini",
                "skidrow.ini", "cpy.ini", "onlinefix.ini", "steamclient_loader.exe", "uplay_r1_loader.dll.bak"}
@@ -837,6 +847,10 @@ def main() -> None:
     s.add_argument("name", help="lowercase kebab-case, e.g. c")
     s.add_argument("--scope", required=True, help="the root: the system drive (C:/) or another drive or folder")
     s.add_argument("--installs", nargs="*", default=[], help="folders whose children are game installs")
+    for s in (sub.choices["add-old-drive"], sub.choices["add-live"]):
+        s.add_argument("--skip", nargs="*", default=[],
+                       help="folders inside the root to leave out: a nested old drive copy already salvaged, "
+                            "or Windows.old when it's a target of its own")
     for name, help_ in (("preview", "list what a backup would copy, writing nothing"),
                         ("gaps", "save-like folders nothing covers: install folders, and old profiles"),
                         ("backup", "copy the saves into the archive, then verify"),

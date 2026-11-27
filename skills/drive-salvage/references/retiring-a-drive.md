@@ -16,6 +16,13 @@ unsaved notes and notebook backups that apps keep in AppData.
 - **A disk Windows shows as offline** (`Get-Disk`, "Offline by policy"): bring it online
   read-only from an admin shell first, so nothing can change it, then give it a letter:
   `Set-Disk <n> -IsReadOnly $true; Set-Disk <n> -IsOffline $false`.
+- **A drive that holds other drives**: an old system disk often contains an older copy kept
+  as a folder (`E:\_old-c`) and `Windows.old` from a reinstall. Check a nested copy against
+  any copy already salvaged: `robocopy <a> <b> /L /E /XJ /NJH /NJS /NDL /NC /NS /FP` in
+  both directions lists every file that differs, so an empty list means it's the same. Make
+  `Windows.old` a target of its own if it has a `Users` folder. Then pass both to `--skip`
+  (`add-old-drive ... --skip E:/_old-c E:/Windows.old`, and the same on `leftovers`), so
+  neither is scanned twice.
 - **This PC's C:**: running apps hold some files open. Close chat apps, mail and browsers
   first, or expect a few files to be skipped (the copy says which).
 

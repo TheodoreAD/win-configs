@@ -46,7 +46,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-NOT_USERS = {"public", "default", "default user", "all users", "defaultapppool"}
+NOT_USERS = {"public", "default", "default user", "all users", "defaultapppool", "defaultuser0"}
 USER_FOLDERS = ["Desktop", "Documents", "Pictures", "Music", "Videos", "Favorites", "Links", "Contacts",
                 "Downloads", "Saved Games", "repos", "source", "projects", "OneDrive", "MicrosoftEdgeBackups"]
 # Personal data apps keep inside AppData, relative to the profile. Globs allowed.
@@ -63,6 +63,9 @@ APP_DATA = [
     "AppData/Local/Packages/Microsoft.MicrosoftStickyNotes_*/LocalState",
     "AppData/Roaming/Thunderbird/Profiles",
     "AppData/Roaming/Code/User/snippets",             # VS Code snippets
+    "AppData/Roaming/Vortex/state.v2",                # Vortex: which mods, for which game (the archives
+    "AppData/Roaming/Vortex/metadb",                  # in downloads/ and staging are re-downloadable)
+    "AppData/Roaming/bibisco",                        # bibisco writing app settings and project list
 ]
 PROFILE_FILES = [
     ".gitconfig", ".gitconfig.backup", ".bash_history", ".bashrc", ".bash_profile", ".profile", ".vimrc",
@@ -72,6 +75,9 @@ PROFILE_FILES = [
     "AppData/Local/Google/Chrome/User Data/*/Bookmarks", "AppData/Local/Google/Chrome/User Data/*/Bookmarks.bak",
     "AppData/Local/Google/Chrome/User Data/*/History",
     "AppData/Local/Microsoft/Edge/User Data/*/Bookmarks", "AppData/Local/Microsoft/Edge/User Data/*/History",
+    "AppData/Local/BraveSoftware/Brave-Browser/User Data/*/Bookmarks",
+    "AppData/Local/BraveSoftware/Brave-Browser/User Data/*/History",
+    "AppData/Roaming/Sublime Text*/Local/Session.sublime_session",  # unsaved Sublime Text tabs
     "AppData/Roaming/Mozilla/Firefox/Profiles/*/places.sqlite",
     "AppData/Roaming/Mozilla/Firefox/Profiles/*/bookmarkbackups/*",
 ]
@@ -213,7 +219,7 @@ def cmd_leftovers(a) -> None:
         for r, _, fs in os.walk(dest):
             for f in fs:
                 covered.add(key(drive / (Path(r) / f).relative_to(dest)))
-    installs = [key(i) for i in a.installs]
+    installs = [key(i) for i in a.installs] + [key(s) for s in a.skip]
     stats, sizes, total, decide = defaultdict(Counter), Counter(), Counter(), set()
 
     def software(rel: Path, full: Path) -> bool:
@@ -381,6 +387,8 @@ def main() -> None:
     s.add_argument("--saves", help="the game-save target's backup folder")
     s.add_argument("--installs", nargs="*", default=[],
                    help="game install folders: software, their saves already taken by game-saves.py")
+    s.add_argument("--skip", nargs="*", default=[],
+                   help="folders handled elsewhere: a nested old drive copy already salvaged, or Windows.old")
     s.add_argument("--limit", type=int, default=60, help="folders to list (default 60)")
     s = sub.add_parser("inventory", help="list the software the drive had: names and versions only")
     s.add_argument("drive")
