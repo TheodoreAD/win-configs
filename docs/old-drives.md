@@ -5,7 +5,7 @@ so it can be deleted without losing anything personal. Game saves and settings a
 software, Windows settings and drivers aren't, since they get reinstalled.
 
 The order matters: saves first, then other personal data, then a check of everything that's
-left. The first copy of `C:\_other_c` skipped that last step, and missed chat histories,
+left. The first drive copy done this way skipped that last step, and missed chat histories,
 unsaved notes and notebook backups that apps keep in AppData.
 
 ## 1. Game saves
