@@ -15,6 +15,9 @@ Files in this folder:
 - **`patches/better-tabs-launch-names.patch`** — local fix so + menu agent tabs follow the
   session's title (see below)
 
+The layout, icon and patch are copies of `power-user-linux-setup`'s `config/herdr-app/`, which
+is their source (see [On Linux](#on-linux)).
+
 ## Two products, don't mix them up
 
 - **Herdr desktop app** — `herdr-app.exe` (the window) plus `herdr-core.exe` / `hc.exe` (runs the
@@ -35,7 +38,7 @@ Files in this folder:
    powershell -c "irm https://releases.herdr.dev/app/install.ps1 | iex"
    ```
 
-   On Linux, see [On Linux](#on-linux) instead.
+   On Linux, `power-user-linux-setup` installs it (see [On Linux](#on-linux)).
 
 2. Start it once so it creates `~/.config/herdr-app/`.
 3. Read `~/.config/herdr-app/AGENTS.md`. It's the full manual for agents working on the config
@@ -136,7 +139,8 @@ session in the middle, a 368px right panel with Files, Changes, PRs and Issues. 
 [jankeesvw/herdr-issues](https://github.com/jankeesvw/herdr-issues) (GitHub issues) in the
 Issues slot. Better Alerts was skipped too: its notifications use Linux `notify-send`.
 
-Pinned versions, as security-reviewed on 2026-11-23:
+Pinned versions, as security-reviewed on 2026-11-23 (the source is `power-user-linux-setup`'s
+`tasks/herdr.py`; bump them there first):
 
 - **munza/herdr-mods** — `1abf4870adb4c3f7a71739db1e0c29493f5e3f95` (2026-11-19), Apache-2.0
 - **jankeesvw/herdr-issues** — `15ffaad00d37efe17ef952109a3198fe299ecb67` (2026-11-03)
@@ -293,64 +297,21 @@ folders doesn't clean up (all harmless):
 
 ## On Linux
 
-The same settings, layout and mods on a Linux machine, until they move to a more organized
-place. The Linux setup repo (`power-user-linux-setup`) provides the prerequisites: `git`, `gh`
-logged in, Go, `python3` and the Nerd Font. Written from the Windows steps and the upstream
-installers. **Not tested on Linux yet.**
+On Linux, `power-user-linux-setup` installs and configures Herdr; nothing from this folder is
+run there by hand:
 
-Install the app with the one-liner from [herdr.dev/download](https://herdr.dev/download/)
-(x86_64 and arm64; needs `curl` and `tar`; no root). It installs to
-`~/.local/share/herdr-app`, puts `herdr-app` in `~/.local/bin`, adds a launcher entry, and
-installs `herdr-core` and `hc` to `~/.local/bin` if they aren't there. Running it again updates
-the app.
+- **`inv tools.install`** installs the app and herdr-core (`[packages.herdr-app]` in its
+  `setup.toml`), with telemetry off (`HERDR_TELEMETRY=0` and a seeded `settings.json`: this
+  folder's `settings.json` without `zoom`). It also installs the `herdr-remote` skill.
+- **`inv herdr.install-mods`** (`tasks/herdr.py`) installs the Estro layout and the same mods:
+  same pinned commits, Branch PR built with `GOTOOLCHAIN=local`, the Better Tabs patch and the
+  Better Changes limit of 100. First run on 2026-11-27: all eight mods passed `herdr-app check`,
+  no errors on the `estro` layout.
 
-```bash
-curl -fsSL https://releases.herdr.dev/app/install.sh | sh
-```
-
-Start the app once so it creates `~/.config/herdr-app/`, then run the rest from a clone of this
-repo (`gh repo clone win-configs` clones your own copy):
-
-```bash
-# ============================================================================
-#                       Herdr on Linux: settings, Estro + mods
-# ============================================================================
-set -e
-h=~/.config/herdr-app
-# 1. Back up the whole config (restoring this folder undoes everything below)
-cp -a "$h" ~/.config/herdr-app-backup-"$(date +%F)"
-rm -f ~/.config/herdr-app-backup-"$(date +%F)"/herdr-app.sock
-# 2. Settings (check the font is installed first: fc-list | grep -i caskaydia)
-cp herdr/settings.json "$h/settings.json"
-# 3. Clone the reviewed commits (not the latest code; review again before bumping)
-src=$(mktemp -d)
-git clone --quiet https://github.com/munza/herdr-mods "$src/munza"
-git -C "$src/munza" checkout --quiet 1abf4870adb4c3f7a71739db1e0c29493f5e3f95
-git clone --quiet https://github.com/jankeesvw/herdr-issues "$src/issues"
-git -C "$src/issues" checkout --quiet 15ffaad00d37efe17ef952109a3198fe299ecb67
-# 4. Copy the mod folders (never overwrite an existing mod of the same name)
-for m in "$src"/munza/better-icons/mods/better-icons "$src"/munza/better-sidebar/mods/better-sidebar \
-         "$src"/munza/better-tabs/mods/better-tabs "$src"/munza/better-files/mods/better-files \
-         "$src"/munza/better-changes/mods/better-changes "$src"/munza/better-config/mods/better-config \
-         "$src"/issues/mods/issues; do
-    if [ -e "$h/mods/$(basename "$m")" ]; then echo "exists, skipped: $m"; else cp -a "$m" "$h/mods/"; fi
-done
-# 5. Build and install Branch PR (Go helper -> mods/branch-pr/bin/herdr-pr)
-GOTOOLCHAIN=local go -C "$src/munza/branch-pr/helper" run ./install
-# 6. The Estro layout from this repo and its icon
-cp herdr/layouts/estro.json herdr/layouts/estro-issues.svg "$h/layouts/"
-# 7. Local patch: + menu agent tabs follow the session title (see Better Tabs above)
-git -C "$h/mods/better-tabs" apply "$PWD/herdr/patches/better-tabs-launch-names.patch"
-# 8. Better Changes: show at most 100 files (see above)
-python3 -c 'import json,sys; p=sys.argv[1]; j=json.load(open(p)); j.setdefault("settings",{}).setdefault("limits",{})["files"]=100; json.dump(j,open(p,"w"),indent=2)' "$h/mods/better-changes/mod.json"
-# 9. Check every mod, then switch layout
-for n in better-icons better-sidebar better-tabs better-files better-changes better-config branch-pr issues; do
-    herdr-app check "$h/mods/$n"
-done
-herdr-app do layout.switch '{"name":"estro"}'
-herdr-app status
-rm -rf "$src"
-```
+**`power-user-linux-setup` is the source** for the shared pieces: the mod pins (`tasks/herdr.py`)
+and the layout, icon and patch (`config/herdr-app/`). This folder's `layouts/` and `patches/`
+are copies of those for the Windows steps above. Change or bump them there first, then copy
+them here (and update the pins under "Pinned versions" above) in the same sitting.
 
 Differences from Windows:
 
@@ -358,12 +319,11 @@ Differences from Windows:
 - **Better Files on Linux:** file names reach the shell as separate arguments, so the Windows
   quoting bug doesn't apply. But its "open", "open in editor", "reveal" and search actions call
   the macOS commands `open` and `mdfind`, so expect those to fail on Linux (on Debian and
-  Ubuntu, `open` is a different program, `openvt`). Browsing and the Markdown preview don't use
-  them.
-- **Better Alerts** (skipped on Windows) uses `notify-send`, so it would work here. Not
+  Ubuntu, `open` is a different program, `openvt`); not checked yet. Browsing and the Markdown
+  preview don't use them.
+- **Better Alerts** (skipped on Windows) uses `notify-send`, so it would work there. Not
   reviewed or installed; it's in the same munza commit if wanted.
-- **`zoom` 1.2** in `settings.json` suits the Windows machine's display; adjust in Settings if
-  the Linux screen differs.
+- **`zoom`** is left out of the Linux settings, since 1.2 suits this machine's display.
 - **Connecting to the Windows machine:** the `herdr-remote` skill, started from
   `herdr-remote.py handoff` on Windows.
 
