@@ -784,7 +784,9 @@ def cmd_index(a, arc: Archive) -> None:
         for f in files:  # emulator save folders are named by Steam app id
             parts = [x.lower() for x in Path(f["path"]).parts]
             for i, x in enumerate(parts[:-1]):
-                if x in EMULATOR_DIRS and parts[i + 1].isdigit():
+                # ProgramData\Steam\<app id> is one more emulator's layout (save, storage, stats).
+                if (x in EMULATOR_DIRS or (x == "steam" and i and parts[i - 1] == "programdata")) \
+                        and parts[i + 1].isdigit():
                     emulated.setdefault(parts[i + 1], []).append((x, f))
         mods = {}
         for loc in {Path(common)} if common else set():

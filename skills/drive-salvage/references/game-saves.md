@@ -153,6 +153,9 @@ it records per game:
 - **`{drive}`**: the old drive's root, or the system drive for live targets. Use it where a
   placeholder would point at this PC instead, like the Public folder (`<winPublic>` always
   means this PC's).
+- **Globs**: `*` and `**` work. Square brackets don't make a character range: in Ludusavi they
+  escape a special character (`[[]` is a literal `[`). So `ProgramData/Steam/[0-9]*` matches
+  nothing; use the folder itself.
 - **`integration`**: `extend` adds paths to a game Ludusavi already knows. The default,
   `override`, defines a new game, and replaces a known game of the same name.
 - **`notSaves`**: folders `gaps` stops reporting. Profile-relative paths (`AppData/Roaming/Autodesk`),
