@@ -108,9 +108,39 @@ Look closely at:
 - **Cloud clients** (SpiderOak, Dropbox, OneDrive): only their local state. The files are in
   the cloud, or in the sync folder if it was on this drive
 
-## 4. Delete, once the owner says so
+## 4. Record it
 
-When step 3 shows only software, settings, caches and credential stores, the drive can go.
+Write `decisions.md` in the drive's folder by hand. It holds what the drive was (which
+system, which years), what was skipped as handled elsewhere, what was left on purpose and
+why, and what's undecided. Then:
+
+```shell
+python <skill>/scripts/personal-data.py report E:/old-c D:/_backups/old-drives/old-pc --name old-pc `
+    --saves-targets D:/_backups/game-saves/old-pc
+python <skill>/scripts/overview.py
+```
+
+`report` writes `salvage.md` from the result files the earlier steps left:
+
+- `software.json`
+- `copy.json` and `manifest.json`
+- `leftovers.json`
+- each target's `verify.json` and `games.json`
+- `decisions.md`
+
+`overview.py` writes `_backups\README.md`. It maps every record file, lists the drives and
+targets, and lists all games across archives with the newest save of each.
+
+Later, without the drive:
+
+```shell
+python <skill>/scripts/personal-data.py check D:/_backups/old-drives/old-pc   # every file against manifest.json
+```
+
+## 5. Delete, once the owner says so
+
+When step 3 shows only software, settings, caches and credential stores, and step 4's record
+is written, the drive can go.
 Deleting is the owner's decision, made after seeing step 3's result. Delete it from Explorer or
 with `Remove-Item -Recurse` for a folder copy, or wipe the disk.
 

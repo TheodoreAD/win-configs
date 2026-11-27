@@ -43,6 +43,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -172,30 +173,74 @@ def cmd_copy(a) -> None:
     for src in files:
         robocopy([str(src.parent), str(dest / src.parent.relative_to(drive)), src.name], log)
     # Verify: every file in the selection, minus secrets and junction targets, is in dest unchanged.
-    n = size = 0
-    bad = []
+    # The hashes go into manifest.json, so the copy can be checked again after the drive is gone.
+    sources = list(files)
     for src in folders:
         for r, ds, fs in os.walk(src):
             ds[:] = [d for d in ds if d.lower() not in SECRET_DIRS and not os.path.islink(os.path.join(r, d))]
-            for f in fs:
-                s = Path(r) / f
-                if is_secret(s):
-                    continue
-                n += 1
-                size += s.stat().st_size
-                d = dest / s.relative_to(drive)
-                if not d.is_file() or sha1(s) != sha1(d):
-                    bad.append(s)
-    for s in files:
-        n += 1
-        size += s.stat().st_size
+            sources += [Path(r) / f for f in fs if not is_secret(Path(r) / f)]
+    entries, bad = [], []
+    for s in sources:
+        st = s.stat()
         d = dest / s.relative_to(drive)
-        if not d.is_file() or sha1(s) != sha1(d):
+        h = sha1(s)
+        if not d.is_file() or sha1(d) != h:
             bad.append(s)
-    print(f"{len(folders)} folders and {len(files)} files selected; {n} files, {size / 1e6:.1f} MB checked in {dest}")
+        entries.append({"path": slash_rel(s.relative_to(drive)), "size": st.st_size,
+                        "modified": iso(st.st_mtime), "created": iso(st.st_birthtime), "sha1": h})
+    size = sum(e["size"] for e in entries)
+    out = dest.parent
+    write_json(out / "manifest.json", {"drive": str(drive), "copy": str(dest), "written": iso(time.time()),
+                                       "files": entries})
+    write_json(out / "copy.json", {"drive": str(drive), "copy": str(dest), "when": iso(time.time()),
+                                   "folders": [slash_rel(f.relative_to(drive)) for f in folders],
+                                   "files": len(entries), "bytes": size, "verified": not bad,
+                                   "problems": [slash_rel(b.relative_to(drive)) for b in bad[:50]]})
+    print(f"{len(folders)} folders and {len(files)} files selected; {len(entries)} files, {size / 1e6:.1f} MB "
+          f"checked in {dest}\nmanifest: {out / 'manifest.json'}")
     for b in bad[:10]:
         print(f"  MISSING OR DIFFERENT: {b.relative_to(drive)}")
     sys.exit(1 if bad else 0)
+
+
+def cmd_check(a) -> None:
+    """Re-check a copy against its manifest: no original needed."""
+    out = Path(a.folder)
+    man = read_json(out / "manifest.json") or sys.exit(f"no manifest.json in {out}")
+    dest = Path(man["copy"])
+    bad = []
+    for e in man["files"]:
+        p = dest / e["path"]
+        if not p.is_file() or p.stat().st_size != e["size"] or sha1(p) != e["sha1"]:
+            bad.append(e["path"])
+    result = {"when": iso(time.time()), "files": len(man["files"]), "ok": not bad, "problems": bad[:50]}
+    info = read_json(out / "copy.json") or {}
+    info["lastCheck"] = result
+    write_json(out / "copy.json", info)
+    print(f"{len(man['files']) - len(bad)} of {len(man['files'])} files match the manifest")
+    for b in bad[:10]:
+        print(f"  MISSING OR CHANGED: {b}")
+    sys.exit(1 if bad else 0)
+
+
+def iso(ts: float) -> str:
+    return time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(ts))
+
+
+def slash_rel(p: Path) -> str:
+    return str(p).replace("\\", "/")
+
+
+def read_json(p: Path):
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except (FileNotFoundError, ValueError):
+        return None
+
+
+def write_json(p: Path, data) -> None:
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(json.dumps(data, indent=1, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
 
 
 def bucket(rel: Path) -> str:
@@ -265,14 +310,109 @@ def cmd_leftovers(a) -> None:
                 pass
             if g := EXT_GROUP.get(p.suffix.lower()):
                 stats[b][g] += 1
-    print(", ".join(f"{k}: {v}" for k, v in total.items()) + " files")
-    print("\nFolders with personal-looking files that neither backup holds (software trees and caches left out):")
-    for b in sorted(stats, key=lambda k: -sum(stats[k].values()))[: a.limit]:
-        print(f"  {b}  [{sizes[b] / 1e6:.1f} MB]  " + ", ".join(f"{g} {n}" for g, n in stats[b].most_common()))
+    lines = [", ".join(f"{k}: {v}" for k, v in total.items()) + " files", "",
+             "Folders with personal-looking files that neither backup holds (software trees and caches left out):"]
+    ranked = sorted(stats, key=lambda k: -sum(stats[k].values()))
+    for b in ranked[: a.limit]:
+        lines.append(f"  {b}  [{sizes[b] / 1e6:.1f} MB]  " + ", ".join(f"{g} {n}" for g, n in stats[b].most_common()))
     if decide:
-        print("\nCredential stores, not copied (decide on these yourself):")
-        for s in sorted(decide)[:40]:
-            print(f"  {s}")
+        lines += ["", "Credential stores, not copied (decide on these yourself):"]
+        lines += [f"  {s}" for s in sorted(decide)[:40]]
+    print("\n".join(lines))
+    # Kept beside the copy, so the salvage report can say what was left and why.
+    write_json(dest.parent / "leftovers.json", {
+        "drive": str(drive), "when": iso(time.time()), "counts": dict(total), "skip": a.skip, "installs": a.installs,
+        "folders": [{"folder": b, "bytes": sizes[b], "types": dict(stats[b])} for b in ranked],
+        "credentialStores": sorted(decide)})
+
+
+def disk_description(drive: Path) -> list[str]:
+    """What physical disk a drive letter is on, as far as Windows says."""
+    letter = str(drive)[:1].upper()
+    if not re.fullmatch(r"[A-Za-z]:[\\/]?", str(drive)):
+        return [f"- **A folder**: `{drive}`, on {letter}:"]
+    ps = (f"$p = Get-Partition -DriveLetter {letter}; $d = $p | Get-Disk; $v = Get-Volume -DriveLetter {letter}; "
+          "[pscustomobject]@{disk=$d.FriendlyName; serial=$d.SerialNumber; bus=[string]$d.BusType; "
+          "sizeGB=[int]($d.Size/1GB); label=$v.FileSystemLabel; fs=$v.FileSystem; usedGB=[int](($v.Size-$v.SizeRemaining)/1GB)}"
+          " | ConvertTo-Json")
+    r = subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, text=True)
+    try:
+        d = json.loads(r.stdout)
+    except ValueError:
+        return [f"- **Drive**: `{drive}`"]
+    return [f"- **Drive**: `{drive}`, volume \"{d.get('label')}\" ({d.get('fs')}, {d.get('usedGB')} GB used)",
+            f"- **Disk**: {d.get('disk')}, {d.get('bus')}, {d.get('sizeGB')} GB, serial `{(d.get('serial') or '').strip()}`"]
+
+
+def cmd_report(a) -> None:
+    drive, out = Path(a.drive), Path(a.folder)
+    copy, man, left = read_json(out / "copy.json"), read_json(out / "manifest.json"), read_json(out / "leftovers.json")
+    soft = read_json(out / "software.json")
+    lines = [f"# Salvage: {a.name}", "", f"Report written {iso(time.time())} by drive-salvage's `personal-data.py report`.",
+             "Everything here comes from the result files beside it; rerun `report` after any step.", "",
+             "## The drive", ""]
+    lines += disk_description(drive)
+    profs = profiles(drive) if drive.exists() else []
+    if profs:
+        lines.append("- **Profiles**: " + ", ".join(f"`{p.name}`" for p in profs))
+    if man and man["files"]:
+        mods = sorted(e["modified"] for e in man["files"])
+        lines.append(f"- **Personal files span**: {mods[0][:10]} to {mods[-1][:10]} (modified dates)")
+    lines += ["", "## Game saves", ""]
+    for t in a.saves_targets:
+        tdir = Path(t)
+        v, g = read_json(tdir / "verify.json"), read_json(tdir / "games.json")
+        games = (g or {}).get("games", {})
+        last = sorted(x["lastSave"] for x in games.values() if x.get("lastSave"))
+        acq = Counter(x.get("acquired", "unknown").split(":")[0] for x in games.values())
+        lines.append(f"- **`{tdir.name}`** (`{tdir}`): {len(games)} games indexed"
+                     + (f", saves {last[0]} to {last[-1]}" if last else ""))
+        if v:
+            lines.append(f"  - **Verified** {v['when']}: {v['safe']} of {v['total']} games safe"
+                         + (f"; not safe: {', '.join(v['notSafe'][:5])}" if v.get("notSafe") else ""))
+        if acq:
+            lines.append("  - **Acquired**: " + ", ".join(f"{k} {n}" for k, n in acq.most_common()))
+        lines.append(f"  - **Per game**: `{tdir / 'games.md'}`")
+    if not a.saves_targets:
+        lines.append("- None recorded.")
+    lines += ["", "## Personal data", ""]
+    if copy:
+        lines.append(f"- **Copy**: `{copy['copy']}`, {copy['files']} files, {copy['bytes'] / 1e9:.2f} GB, "
+                     f"made {copy['when']}, {'every file verified by SHA-1' if copy['verified'] else 'PROBLEMS: ' + ', '.join(copy['problems'][:5])}")
+        if lc := copy.get("lastCheck"):
+            lines.append(f"- **Last re-check against the manifest**: {lc['when']}, "
+                         + ("all files match" if lc["ok"] else f"{len(lc['problems'])} problems"))
+        lines.append(f"- **Manifest**: `{out / 'manifest.json'}` (path, size, dates and SHA-1 of every file)")
+        lines.append("- **What was taken**: " + ", ".join(f"`{f}`" for f in copy["folders"][:40]))
+    else:
+        lines.append("- No copy recorded.")
+    lines += ["", "## Software", ""]
+    if soft:
+        lines.append(f"- **List**: `{out / 'software.md'}`, {sum(len(v) for v in soft.values())} entries in "
+                     f"{len(soft)} sections (names and versions only)")
+    lines += ["", "## What was left on the drive", ""]
+    if left:
+        c = left["counts"]
+        lines.append(f"- **Last scan** {left['when']}: {c.get('left', 0)} files neither backup holds, "
+                     f"{c.get('in a backup', 0)} in a backup, {c.get('software', 0)} software")
+        if left.get("skip"):
+            lines.append("- **Skipped as handled elsewhere**: " + ", ".join(f"`{s}`" for s in left["skip"]))
+        lines.append("- **Folders left with the most personal-looking files** (each reviewed: software, app state "
+                     "or caches):")
+        lines += [f"  - `{f['folder']}`, {f['bytes'] / 1e6:.0f} MB" for f in left["folders"][:12]]
+        if left["credentialStores"]:
+            lines.append("- **Credential stores, left with the drive on purpose** (never copied):")
+            lines += [f"  - `{s}`" for s in left["credentialStores"][:30]]
+    else:
+        lines.append("- No leftover scan recorded.")
+    if (out / "decisions.md").is_file():
+        lines += ["", "## Decisions", "", (out / "decisions.md").read_text(encoding="utf-8").strip()]
+    lines += ["", "## Checking it again", "", "```shell",
+              f"python <skill>/scripts/personal-data.py check {out}"]
+    lines += [f"python <skill>/scripts/game-saves.py verify {Path(t).name}   # needs the drive" for t in a.saves_targets]
+    lines += ["```", ""]
+    (out / "salvage.md").write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    print(out / "salvage.md")
 
 
 def child_names(p: Path) -> list[str]:
@@ -394,8 +534,17 @@ def main() -> None:
     s.add_argument("drive")
     s.add_argument("--out", required=True, help="folder for software.json and software.md")
     s.add_argument("--installs", nargs="*", default=[], help="game install folders to list")
+    s = sub.add_parser("check", help="re-check a copy against its manifest.json; the drive isn't needed")
+    s.add_argument("folder", help="the drive's folder, e.g. D:/_backups/old-drives/<name> (holds manifest.json)")
+    s = sub.add_parser("report", help="write salvage.md: the drive, what was saved and checked, what was left")
+    s.add_argument("drive")
+    s.add_argument("folder", help="the drive's folder, e.g. D:/_backups/old-drives/<name>")
+    s.add_argument("--name", required=True, help="the salvage's name, e.g. old-pc-2020")
+    s.add_argument("--saves-targets", nargs="*", default=[],
+                   help="its game-save target folders, e.g. D:/_backups/game-saves/<target>")
     a = p.parse_args()
-    {"copy": cmd_copy, "leftovers": cmd_leftovers, "inventory": cmd_inventory}[a.cmd](a)
+    {"copy": cmd_copy, "leftovers": cmd_leftovers, "inventory": cmd_inventory, "check": cmd_check,
+     "report": cmd_report}[a.cmd](a)
 
 
 if __name__ == "__main__":

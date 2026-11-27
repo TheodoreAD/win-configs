@@ -384,7 +384,7 @@ def verify(arc: Archive, name: str, games: list[str] = ()) -> int:
         game, files = read_mapping(m)
         mappings[game] = (m.parent, files)
     current = files_of(preview_files(arc.config(name), games))
-    bad = 0
+    bad, not_safe = 0, []
     for game, files in sorted(current.items()):
         folder, stored = mappings.get(game, (None, {}))
         problems = []
@@ -403,10 +403,15 @@ def verify(arc: Archive, name: str, games: list[str] = ()) -> int:
                 problems.append(f"backup copy missing or damaged: {copy}")
         if problems:
             bad += 1
+            not_safe.append(game)
             print(f"NOT SAFE {game}:")
             for pr in problems[:5]:
                 print(f"    {pr}")
     print(f"{len(current) - bad} of {len(current)} games safe" + ("" if not bad else f", {bad} not"))
+    if not games:  # a full run is the target's record; a run on chosen games isn't
+        write_json(arc.root / name / "verify.json", {"when": time.strftime("%Y-%m-%d %H:%M:%S"),
+                                                     "total": len(current), "safe": len(current) - bad,
+                                                     "notSafe": not_safe})
     return 1 if bad else 0
 
 

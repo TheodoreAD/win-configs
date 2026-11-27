@@ -46,7 +46,12 @@ Details and commands are in `references/retiring-a-drive.md`.
 3. **What's left**: `personal-data.py leftovers`. Read every line it prints. Anything personal
    goes into the copy lists, or into the save archive, and step 2 or 1 runs again. Repeat
    until only software, app settings, caches and credential stores remain.
-4. **Delete only when the user says so**, after they've seen step 3's result.
+4. **Record it**, so it can be read once the drive is gone:
+   - write the drive folder's `decisions.md` by hand: what the drive was, what was skipped or
+     left and why, what's still undecided
+   - `personal-data.py report` writes `salvage.md` from the result files
+   - `overview.py` rewrites the archive's front page, `README.md`
+5. **Delete only when the user says so**, after they've seen step 3's result.
 
 Step 3 is the one that matters most and the easiest to skip. On the first drive done this
 way, the user folders and game saves were all safe, and the drive still held Skype and
@@ -80,6 +85,15 @@ data disk's `_backups` folder:
   with `games.md` per target
 - **Personal data**: `_backups\old-drives\<name>\personal\`, at the original paths
 - **Software list**: `_backups\old-drives\<name>\software.md`
+- **Records**: each drive's folder also holds
+  - `salvage.md`, the report
+  - `decisions.md`
+  - `manifest.json`, every copied file with SHA-1, so `personal-data.py check` can re-verify
+    the copy without the drive
+  - `copy.json` and `leftovers.json`
+
+  Each game-save target holds `verify.json`. `_backups\README.md` is the front page: a map of
+  all of these, the drives, the targets, and every game across archives with its newest save.
 
 `custom-games.json` in the save archive holds the user's game list. It's personal, so it
 never goes in a repo.
@@ -88,7 +102,8 @@ never goes in a repo.
 
 - **`scripts/game-saves.py`** — the game-save archive on Ludusavi (`scoop install extras/ludusavi`):
   `add-old-drive`, `add-live`, `gaps`, `preview`, `backup`, `verify`, `index`
-- **`scripts/personal-data.py`** — `inventory`, `copy`, `leftovers`
+- **`scripts/personal-data.py`** — `inventory`, `copy`, `leftovers`, `check`, `report`
+- **`scripts/overview.py`** — the archive's front page and cross-archive game list
 - **`references/retiring-a-drive.md`** — the full procedure, step by step
 - **`references/game-saves.md`** — the archive layout, targets, custom games, the index, restoring
 
