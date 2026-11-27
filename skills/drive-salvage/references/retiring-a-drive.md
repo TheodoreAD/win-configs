@@ -36,8 +36,14 @@ python <skill>/scripts/game-saves.py backup old-pc     # ends with verify: every
 python <skill>/scripts/game-saves.py index old-pc      # games.md: when and how each game was played
 ```
 
-For this PC's own drives, use `add-live` targets instead (`add-live c --scope C:/`); `gaps` is
-for old drives only.
+For this PC's own drives, use `add-live` targets instead (`add-live c --scope C:/`, `add-live d
+--scope D:/ --installs D:/_games`). `gaps` works on them too, for the install folders.
+
+Ludusavi misses saves inside install folders when it doesn't know the game, or knows it only
+from a store install. That's common for downloaded releases, which keep saves in `save`,
+`SaveData`, `storage` or `Profile\IGGGAMES`. On the first data drive checked, 16 of 34
+installs had saves or emulator data in their own folder, and Ludusavi found 3 of them by
+itself. `gaps` lists the rest.
 
 `gaps` only looks where games usually save. Step 3 catches the rest, such as game screenshots
 or a game folder kept under an odd name. Add those to `custom-games.json`, often as `extend` on

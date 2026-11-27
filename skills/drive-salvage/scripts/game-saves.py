@@ -26,14 +26,14 @@ custom-games.json:
   <winDocuments>), which resolve inside an old drive's profiles too. {drive} is the target's
   drive root (the system drive for live targets); use it where a placeholder points at this PC
   instead, like the Public folder. "extend" adds paths to a game Ludusavi already knows.
-  notSaves are profile-relative folders that `gaps` stops reporting. acquired overrides how
+  notSaves are folders `gaps` stops reporting: profile-relative paths, or install folder names. acquired overrides how
   `index` says a game was obtained.
 
 Usage (the archive is $GAME_SAVES_HOME, or --archive):
   python <skill>/scripts/game-saves.py add-old-drive old-pc --drive E:/old-c --installs E:/old-c/_games
   python <skill>/scripts/game-saves.py add-live c --scope C:/ --installs C:/games
   python <skill>/scripts/game-saves.py add-live d --scope D:/ --installs D:/_games
-  python <skill>/scripts/game-saves.py gaps old-pc      # save-like folders nothing covers (old drives)
+  python <skill>/scripts/game-saves.py gaps old-pc      # save-like folders nothing covers, profiles and installs
   python <skill>/scripts/game-saves.py preview old-pc   # what a backup would copy, nothing written
   python <skill>/scripts/game-saves.py backup old-pc
   python <skill>/scripts/game-saves.py verify old-pc    # every current save file is in the backup, same hash
@@ -271,14 +271,44 @@ def cmd_preview(a, arc: Archive) -> None:
         print(f"WARNING: {len(stray)} item(s) from outside {t['scope']}, e.g. {stray[0]}")
 
 
+INSTALL_SAVE_DIRS = {"save", "saves", "savedata", "savegame", "savegames", "saved", "profile", "profiles",
+                     "userdata", "storage"}
+INSTALL_SAVE_FILE = re.compile(r"(^save[^.]*\.[a-z0-9]+$)|\.(sav|save|savegame|rvdata2|psv|sl2)$", re.I)
+# Game assets and code whose names start with "save" (a save-screen script, a "saved" icon).
+MEDIA_EXTS = {".ogg", ".wav", ".mp3", ".png", ".jpg", ".dds", ".xnb", ".dll", ".exe", ".pdb", ".ico", ".lua",
+              ".js", ".ini", ".txt", ".xml", ".json", ".cs", ".py", ".tex", ".bmp", ".gif"}
+
+
+def install_save_hits(game: Path, depth: int = 4) -> list[str]:
+    """Save-like folders (with files) and files inside one game's install folder."""
+    hits, base = [], len(game.parts)
+    for r, ds, fs in os.walk(game):
+        if len(Path(r).parts) - base >= depth:
+            ds[:] = []
+        for d in ds:
+            p = Path(r) / d
+            if d.lower() in INSTALL_SAVE_DIRS and any(f for _, _, f in os.walk(p)):
+                hits.append(slash(p.relative_to(game)) + "/")
+        for f in fs:
+            if INSTALL_SAVE_FILE.search(f) and Path(f).suffix.lower() not in MEDIA_EXTS:
+                hits.append(slash((Path(r) / f).relative_to(game)))
+    return hits
+
+
 def cmd_gaps(a, arc: Archive) -> None:
     t = arc.target(a.name)
-    if t["kind"] != "old-drive":
-        die("gaps is for old drive targets")
     covered = [key(p) for f in files_of(preview_files(arc.config(a.name))).values() for p in f]
     not_saves = {s.lower().replace("\\", "/").strip("/") for s in arc.custom.get("notSaves", [])}
     found = 0
-    for prof in old_profiles(Path(t["scope"])):
+    # Saves kept inside install folders, for games Ludusavi doesn't know or knows elsewhere.
+    for root in t.get("installs", []):
+        for game in sorted((p for p in Path(root).iterdir() if p.is_dir()), key=lambda p: p.name.lower()):
+            if game.name.lower() in not_saves or any(p.startswith(key(game) + os.sep) for p in covered):
+                continue
+            if hits := install_save_hits(game):
+                found += 1
+                print(f"  install {slash(game)}  ({', '.join(hits[:3])}{' ...' if len(hits) > 3 else ''})")
+    for prof in old_profiles(Path(t["scope"])) if t["kind"] == "old-drive" else []:
         for parent in SAVE_PARENTS:
             base = prof / parent
             if not base.is_dir():
@@ -808,7 +838,7 @@ def main() -> None:
     s.add_argument("--scope", required=True, help="the root: the system drive (C:/) or another drive or folder")
     s.add_argument("--installs", nargs="*", default=[], help="folders whose children are game installs")
     for name, help_ in (("preview", "list what a backup would copy, writing nothing"),
-                        ("gaps", "save-like folders on an old drive that nothing covers"),
+                        ("gaps", "save-like folders nothing covers: install folders, and old profiles"),
                         ("backup", "copy the saves into the archive, then verify"),
                         ("verify", "check every current save file is in the backup with the same hash"),
                         ("index", "write games.json and games.md: timeline, play time, mods, store IDs")):

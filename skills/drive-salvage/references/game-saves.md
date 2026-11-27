@@ -64,16 +64,24 @@ anything from outside slips through.
 ## Backing up
 
 ```shell
-python <skill>/scripts/game-saves.py gaps old-pc       # old drives: save-like folders nothing covers yet
+python <skill>/scripts/game-saves.py gaps old-pc       # save-like folders nothing covers yet
 python <skill>/scripts/game-saves.py preview old-pc    # what a backup would copy, nothing written
 python <skill>/scripts/game-saves.py backup old-pc     # back up, then verify
 python <skill>/scripts/game-saves.py verify old-pc     # verify again, any time
 ```
 
-`gaps` lists the folders where games usually save (`Saved Games`, `Documents`,
-`Documents\My Games` and the three AppData folders, in every old profile) that nothing
-covers yet. Work through it until it reports none: each folder either becomes a custom game
-or goes in `notSaves`.
+`gaps` lists what nothing covers yet, in two places:
+
+- **Install folders**, for every target: game folders with save-like contents but nothing
+  backed up. That means folders like `save`, `SaveData`, `Profile` or `storage`, and files
+  like `save1000.dat`, `*.sav` or `*.rvdata2`. Downloaded releases (`IGG-…`) often keep saves
+  there, and keep emulator saves and achievements in `Profile\IGGGAMES`, where Ludusavi doesn't
+  look. Assets and scripts named like saves (`saveloadwindow.lua`, `saved.ico`) are skipped.
+- **Old profiles**, for old drives: the children of the folders where games usually save
+  (`Saved Games`, `Documents`, `Documents\My Games` and the three AppData folders).
+
+Work through it until it reports none. Each hit becomes a custom game (usually `extend`, with
+an absolute path for an install folder), or goes in `notSaves`.
 
 `verify` is the "saves are safe" check. It re-scans the target, then checks two things for
 every save file the root holds now: the backup has it with the same SHA-1, and the stored copy
@@ -139,7 +147,8 @@ it records per game:
   means this PC's).
 - **`integration`**: `extend` adds paths to a game Ludusavi already knows. The default,
   `override`, defines a new game, and replaces a known game of the same name.
-- **`notSaves`**: profile-relative folders that `gaps` stops reporting.
+- **`notSaves`**: folders `gaps` stops reporting. Profile-relative paths (`AppData/Roaming/Autodesk`),
+  or an install folder's name (`Xenonauts`).
 - **`acquired`**: game name to how you got it, overriding what `index` found.
 
 ## Restoring
