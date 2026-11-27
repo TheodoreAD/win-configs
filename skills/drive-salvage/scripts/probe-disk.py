@@ -49,22 +49,40 @@ print(f"disk: {last + 1} sectors ({(last + 1) * SECTOR / 1e9:.1f} GB)")
 mbr = read(0)
 print(f"MBR signature 55AA: {mbr[510:512] == b'\\x55\\xaa'}; partition entries non-empty: "
       f"{sum(1 for i in range(4) if any(mbr[446 + 16 * i:462 + 16 * i]))}")
-print(f"primary GPT header at LBA 1: {read(1)[:8] == b'EFI PART'}")
-backup = read(last)
-print(f"backup GPT header at last LBA: {backup[:8] == b'EFI PART'}")
-if backup[:8] == b"EFI PART":
-    entries_lba, count, size = struct.unpack_from("<QII", backup, 72)
+if any(mbr[446:462]):
+    print(f"  MBR entry 1: type 0x{mbr[450]:02x} (0xee = protective, for GPT), start {struct.unpack_from('<I', mbr, 454)[0]}")
+
+
+def gpt(header: bytes, label: str) -> None:
+    """Print a GPT header's fields and every non-empty entry it points to."""
+    print(f"{label} GPT header: {header[:8] == b'EFI PART'}")
+    if header[:8] != b"EFI PART":
+        return
+    first_usable, last_usable = struct.unpack_from("<QQ", header, 40)
+    entries_lba, count, size = struct.unpack_from("<QII", header, 72)
     raw = read(entries_lba, (count * size + SECTOR - 1) // SECTOR)
+    used = 0
     for i in range(count):
         e = raw[i * size:(i + 1) * size]
         if any(e[:16]):
+            used += 1
             first, end = struct.unpack_from("<QQ", e, 32)
             name = e[56:128].decode("utf-16-le", errors="replace").rstrip("\x00")
-            print(f"  backup GPT partition {i + 1}: sectors {first}-{end} ({(end - first + 1) * SECTOR / 1e9:.1f} GB) '{name}'")
+            print(f"  partition {i + 1}: sectors {first}-{end} ({(end - first + 1) * SECTOR / 1e9:.1f} GB) "
+                  f"'{name}', type {e[:16].hex()}")
+    print(f"  disk GUID {header[56:72].hex()}, usable sectors {first_usable}-{last_usable}, "
+          f"{used} of {count} entries used")
+
+
+gpt(read(1), "primary (LBA 1)")
+gpt(read(last), "backup (last LBA)")
 
 SIGS = [("NTFS boot sector", 3, b"NTFS    "), ("BitLocker volume", 3, b"-FVE-FS-"), ("exFAT boot sector", 3, b"EXFAT   "),
-        ("FAT32 boot sector", 82, b"FAT32   "), ("LUKS header", 0, b"LUKS\xba\xbe"), ("LVM label", 24, b"LVM2 001"),
-        ("GPT header", 0, b"EFI PART")]
+        ("ReFS boot sector", 3, b"ReFS"), ("FAT32 boot sector", 82, b"FAT32   "), ("LUKS header", 0, b"LUKS\xba\xbe"),
+        ("LVM label", 24, b"LVM2 001"), ("GPT header", 0, b"EFI PART"), ("XFS superblock", 0, b"XFSB"),
+        ("F2FS superblock (fs starts 2 sectors earlier)", 0, b"\x10\x20\xf5\xf2"),
+        ("btrfs superblock (fs starts 128 sectors earlier)", 64, b"_BHRfS_M"),
+        ("Linux swap (page ends here)", 502, b"SWAPSPACE2")]
 found = []
 CHUNK = 2048  # sectors per read (1 MB)
 scan = min(last, 2 * 1024 * 1024)  # first 1 GB
@@ -80,6 +98,10 @@ for start in range(0, scan, CHUNK):
 print(f"signatures in the first {scan * SECTOR / 1e9:.1f} GB: {len(found)}")
 for lba, name in found[:25]:
     print(f"  sector {lba} ({lba * SECTOR / 1e6:.1f} MB): {name}")
+# Where partitions usually start: after the GPT, at 1 MB, after a 16 MB Microsoft Reserved partition.
+for lba in (34, 2048, 34816, 264192):
+    head = read(lba)[:32]
+    print(f"  first bytes at sector {lba}: {head.hex(' ')}  |{''.join(chr(b) if 32 <= b < 127 else '.' for b in head)}|")
 
 # How random is the data? Encrypted or compressed data is close to 8 bits per byte.
 samples = []
@@ -92,7 +114,63 @@ if samples:
     samples.sort()
     print(f"entropy of {len(samples)} non-empty 4 KB samples: median {samples[len(samples) // 2]:.2f} bits/byte "
           f"(8.0 = random: encrypted or compressed; under ~6 = ordinary files)")
-if len(sys.argv) > 2:  # read the ext superblock of a filesystem starting at this sector
+if "--ntfs" in sys.argv:
+    # NTFS keeps a backup boot sector in the last sector of its partition: it gives the
+    # partition's size, so its start follows. Then list file names from the MFT records.
+    print("\nNTFS: looking for a backup boot sector in the last 1 GB...")
+    tail = 2 * 1024 * 1024
+    boot = None
+    for start in range(max(0, last - tail), last + 1, CHUNK):
+        buf = read(start, min(CHUNK, last + 1 - start))
+        for s in range(0, len(buf), SECTOR):
+            if buf[s + 3:s + 11] == b"NTFS    " and buf[s + 510:s + 512] == b"\x55\xaa":
+                boot = (start + s // SECTOR, buf[s:s + SECTOR])
+    if boot:
+        lba, bs = boot
+        bps, spc = struct.unpack_from("<HB", bs, 11)
+        total, mft_lcn, mirr_lcn = struct.unpack_from("<QQQ", bs, 40)
+        first = lba - total  # the backup sits right after the volume's last sector
+        print(f"  backup boot sector at sector {lba}: volume of {total} sectors ({total * bps / 1e9:.1f} GB), "
+              f"{spc * bps} bytes per cluster, so the partition ran from sector {first} to {lba}")
+        print(f"  MFT at sector {first + mft_lcn * spc}, MFT mirror at sector {first + mirr_lcn * spc}")
+        mft_at = first + mft_lcn * spc
+    else:
+        print("  none found")
+        mft_at = 0
+    # File names, from MFT records ("FILE" signature) near where the MFT should be.
+    names, records = Counter(), 0
+    sample = []
+    region = range(mft_at, mft_at + 4 * 1024 * 1024, CHUNK) if mft_at else range(0, 16 * 1024 * 1024, CHUNK)
+    for start in region:
+        buf = read(start, CHUNK)
+        for off in range(0, len(buf) - 1024, 1024):
+            rec = buf[off:off + 1024]
+            if rec[:4] != b"FILE" or not (struct.unpack_from("<H", rec, 22)[0] & 1):  # in use
+                continue
+            records += 1
+            a = struct.unpack_from("<H", rec, 20)[0]
+            while 0 < a < 1000:
+                typ, ln = struct.unpack_from("<II", rec, a)
+                if typ == 0xFFFFFFFF or ln == 0:
+                    break
+                if typ == 0x30 and rec[a + 8] == 0:  # resident $FILE_NAME
+                    v = a + struct.unpack_from("<H", rec, a + 20)[0]
+                    nlen, ns = rec[v + 64], rec[v + 65]
+                    if ns != 2:  # skip DOS 8.3 names
+                        name = rec[v + 66:v + 66 + 2 * nlen].decode("utf-16-le", errors="replace")
+                        size = struct.unpack_from("<Q", rec, v + 48)[0]
+                        if not name.startswith("$"):
+                            names[name.rsplit(".", 1)[-1].lower() if "." in name else "(no extension)"] += 1
+                            if len(sample) < 40:
+                                sample.append((name, size))
+                        break
+                a += ln
+    print(f"  {records} file records in use; by extension: "
+          + ", ".join(f"{k} {v}" for k, v in names.most_common(15)))
+    for name, size in sample:
+        print(f"    {name}  ({size / 1e9:.1f} GB)" if size > 1e8 else f"    {name}")
+
+if len(sys.argv) > 2 and sys.argv[2].isdigit():  # read the ext superblock of a filesystem starting at this sector
     import time
     start = int(sys.argv[2])
     sb = read(start + 2, 2)  # superblock: 1024 bytes into the filesystem

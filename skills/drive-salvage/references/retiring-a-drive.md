@@ -25,8 +25,12 @@ unsaved notes and notebook backups that apps keep in AppData.
   the start sector to read its superblock: label, last mount point and dates usually say what
   the disk was for. Linux file systems can then be read in WSL
   (`wsl --mount \\.\PHYSICALDRIVE<n> --bare`, then `mount -o ro,noload` with the offset).
-  `noload` stops the journal replay, which would write. The first disk probed this way was
-  a 2021 Chia plotting scratch disk: ext4, 148 files, nothing to keep.
+  `noload` stops the journal replay, which would write. For NTFS (an MFT record, `FILE0`,
+  where a partition would start), `--ntfs` looks for the backup boot sector at the end of
+  the disk, and lists file names and sizes from the MFT records, without restoring anything.
+  The first two disks probed this way were a 2021 Chia setup: an ext4 plotting scratch disk
+  (148 temp files) and an NTFS farm with its partition entry gone (92 plots). Neither had
+  anything personal.
 - **A drive that holds other drives**: an old system disk often contains an older copy kept
   as a folder (`E:\_old-c`) and `Windows.old` from a reinstall. Check a nested copy against
   any copy already salvaged: `robocopy <a> <b> /L /E /XJ /NJH /NJS /NDL /NC /NS /FP` in
