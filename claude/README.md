@@ -32,6 +32,11 @@ uv run --directory ..\power-user-linux-setup invoke deploy.all --name agents-md 
 
 # Global skills: real copies in ~/.agents/skills, one junction per skill in ~/.claude/skills
 npx skills add TheodoreAD/agent-skills -g -a universal claude-code --skill '*' -y
+
+# plan-conveyor's store: name it explicitly so every shell and agent agrees on it (doctor warns
+# while it's unset, even though ~/plans is also the default). New shells pick it up; restart
+# Claude Code and Herdr's herdr-core for theirs to see it.
+[Environment]::SetEnvironmentVariable("PLANS_HOME", (Join-Path $HOME "plans"), "User")
 ```
 
 This replaces existing files (backed up as `*.bak`). If the machine already has its own
