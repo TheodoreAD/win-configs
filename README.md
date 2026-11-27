@@ -21,7 +21,8 @@ Also in this repo:
   `check-readme-blocks.py` (check that the README's PowerShell blocks parse),
   `stage-hunks.py` (stage only some of a file's changes, for one commit per change),
   `set-refresh.py` (list or switch the display's refresh rate, e.g. 30 Hz on the desktop and
-  165 Hz for games)
+  165 Hz for games), `game-saves.py` (game-save archive with Ludusavi, see
+  [docs/game-saves.md](docs/game-saves.md))
 
 ## Development tools installation
 
@@ -321,6 +322,8 @@ scoop install tilt-dev/tilt
 
 - **Obsidian and Syncthing** — notes and device-to-device sync. Install commands, update
   caveats, `.stignore`, backups and vault layout: [docs/obsidian-syncthing.md](docs/obsidian-syncthing.md).
+- **Ludusavi** — game saves and settings, from this PC and from old drive copies, in one
+  archive outside the repo: [docs/game-saves.md](docs/game-saves.md).
 
 ## WSL and Docker
 
