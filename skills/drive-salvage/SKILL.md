@@ -45,7 +45,11 @@ Details and commands are in `references/retiring-a-drive.md`.
 2. **Other personal data**: `personal-data.py copy`. It verifies every file by SHA-1.
 3. **What's left**: `personal-data.py leftovers`. Read every line it prints. Anything personal
    goes into the copy lists, or into the save archive, and step 2 or 1 runs again. Repeat
-   until only software, app settings, caches and credential stores remain.
+   until only software, app settings, caches and credential stores remain. Then run
+   `deep-survey.py`. It looks where `leftovers` deliberately doesn't: inside game installs
+   (files changed after install), the Recycle Bin, top-level folders, ProgramData, Steam data,
+   portable tools' settings, and profile items copied only partly. Add its finds with
+   `copy --extra` or custom games.
 4. **Record it**, so it can be read once the drive is gone:
    - write the drive folder's `decisions.md` by hand: what the drive was, what was skipped or
      left and why, what's still undecided
@@ -105,6 +109,8 @@ never goes in a repo.
 - **`scripts/personal-data.py`** — `inventory`, `copy`, `leftovers`, `check`, `report`
 - **`scripts/overview.py`** — the archive's front page and cross-archive game list
 - **`scripts/probe-disk.py`** — what's on a disk Windows sees no partitions on (admin, read-only)
+- **`scripts/deep-survey.py`** — the closer look after `leftovers`: installs, Recycle Bin, top-level
+  folders, portable tools, partly copied profile items
 - **`references/retiring-a-drive.md`** — the full procedure, step by step
 - **`references/game-saves.md`** — the archive layout, targets, custom games, the index, restoring
 

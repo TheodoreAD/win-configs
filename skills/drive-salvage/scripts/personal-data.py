@@ -79,12 +79,15 @@ PROFILE_FILES = [
     "AppData/Local/BraveSoftware/Brave-Browser/User Data/*/Bookmarks",
     "AppData/Local/BraveSoftware/Brave-Browser/User Data/*/History",
     "AppData/Roaming/Sublime Text*/Local/Session.sublime_session",  # unsaved Sublime Text tabs
+    # Developer tools' histories and scratch files: small, and nowhere else.
+    ".ipython/profile_*/history.sqlite", ".spyder-py3/*.py", ".idlerc/recent-files.lst",
+    ".jupyter/custom/*", ".jupyter/*.py", ".jupyter/nbconfig/*.json",
     "AppData/Roaming/Mozilla/Firefox/Profiles/*/places.sqlite",
     "AppData/Roaming/Mozilla/Firefox/Profiles/*/bookmarkbackups/*",
 ]
 # Never copied: secrets. Matched against folder and file names anywhere in a copied tree.
 SECRET_DIRS = {".ssh", ".gnupg", ".aws", ".azure", ".kube", "credentials", "protect", "vault", "crypto", "tdata"}
-SECRET_FILES = {"login data", "login data-journal", "logins.json", "key3.db", "key4.db", "accounts.xml",
+SECRET_FILES = {"login data", "login data-journal", "logins.json", "key3.db", "key4.db", "accounts.xml", "wcx_ftp.ini",
                 "cookies", "cookies-journal", "web data"}
 SECRET_EXTS = {".kdbx", ".kdb", ".pfx", ".p12", ".pem", ".ppk", ".key"}
 
@@ -165,6 +168,14 @@ def cmd_copy(a) -> None:
     dest.mkdir(parents=True, exist_ok=True)
     log = dest / "robocopy.log"
     folders, files = selection(drive)
+    # Drive-relative extras found by `leftovers` or a closer look: portable tools' settings,
+    # history files, anything outside the profiles. Globs allowed; secrets are still skipped.
+    for pat in a.extra:
+        for p in sorted(drive.glob(pat.replace("\\", "/"))):
+            if p.is_dir():
+                folders.append(p)
+            elif p.is_file() and not is_secret(p):
+                files.append(p)
     xd = sorted(SECRET_DIRS)
     xf = [f"*{e}" for e in sorted(SECRET_EXTS)] + sorted(SECRET_FILES)
     for src in folders:
@@ -521,6 +532,9 @@ def main() -> None:
     s = sub.add_parser("copy", help="copy the personal data and verify it")
     s.add_argument("drive", help="the old drive's root (the folder holding Users)")
     s.add_argument("--dest", required=True, help="where the copy goes, e.g. D:/_backups/old-drives/<name>/personal")
+    s.add_argument("--extra", nargs="*", default=[],
+                   help="more drive-relative folders or files (globs) to copy, e.g. portable/cmder/config "
+                        "'portable/TCUP/*.ini'; record why in decisions.md")
     s = sub.add_parser("leftovers", help="what neither backup holds, grouped by folder")
     s.add_argument("drive")
     s.add_argument("--dest", required=True, help="the personal copy made by `copy`")

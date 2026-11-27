@@ -114,6 +114,25 @@ anything personal, add its folder to `APP_DATA` in `scripts/personal-data.py` (o
 game-save archive) and rerun `copy`. Then rerun `leftovers` until only app settings, caches
 and cloud clients' local state remain.
 
+Then the closer look, which goes where `leftovers` deliberately doesn't:
+
+```shell
+python <skill>/scripts/deep-survey.py E:/old-c D:/_backups/old-drives/old-pc/personal `
+    D:/_backups/game-saves/old-pc/backup D:/_backups/old-drives/old-pc/deep-survey.md
+```
+
+Read each section of its report. On the second drive salvaged, it found:
+
+- a game's full character vault and save screenshots, which Ludusavi had only partly taken
+- a game's current state, kept inside its install folder
+- emulator stats in a backup copy of a game
+- IPython, Spyder and cmder command histories
+- the portable tools' settings
+
+Add game data as custom games. Add anything outside the profiles with
+`copy --extra` and drive-relative globs (`portable/cmder/config`, `'portable/TCUP/*.ini'`).
+Record each choice, and what was looked at and left, in `decisions.md`.
+
 Look closely at:
 
 - **Chat apps**: their history is often the only copy left, once the service shuts down
