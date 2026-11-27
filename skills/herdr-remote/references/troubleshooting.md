@@ -85,21 +85,28 @@ the controller's `hc` across and restarts that core; its terminals keep running.
 ## WSL terminals gone after reconnect
 
 WSL stopped the distro when it went idle, and the WSL `hc` core went with it. Check with
-`wsl -l -v` after disconnecting. There are two ways to fix it:
+`wsl -l -v` after disconnecting.
 
-- **Keep the distro running.** Add a Task Scheduler task that runs at logon with no
-  window:
+Measured on WSL 2.5.7: the distro stops about **20 seconds** after the last `wsl.exe`
+session ends. Background processes inside it (systemd and its services, a daemonized
+`hc` core) don't keep it alive. So once the Linux controller disconnects, the WSL machine's
+terminals end within seconds.
+
+There are two ways to fix it:
+
+- **Keep the distro running (verified).** A process attached through `wsl.exe` holds it up:
 
   ```powershell
   conhost.exe --headless wsl.exe -d Ubuntu-24.04 -e sleep infinity
   ```
 
-  While that process lives, WSL keeps the distro up.
-- **Set a longer idle timeout** in `%USERPROFILE%\.wslconfig`. The setting names differ
-  between WSL versions, so check `wsl --version` and Microsoft's `.wslconfig`
+  Tested: with this running, an idle distro stayed `Running` for 4 minutes. Killing it let
+  the distro stop 20 seconds later. Run it from a Task Scheduler task at logon so it
+  starts with no window. The task itself hasn't been tested across a logon yet. While the
+  keepalive runs, the WSL VM keeps its memory.
+- **Set a longer idle timeout** in `%USERPROFILE%\.wslconfig` (not verified). The setting
+  names differ between WSL versions, so check `wsl --version` and Microsoft's `.wslconfig`
   documentation for yours. Run `wsl --shutdown` after changing it.
-
-Neither fix has been verified on this setup yet; record what works here.
 
 ## Windows desktop Herdr stuck, or Windows terminals gone after disconnect
 
