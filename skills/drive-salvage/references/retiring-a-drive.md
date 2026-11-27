@@ -16,6 +16,17 @@ unsaved notes and notebook backups that apps keep in AppData.
 - **A disk Windows shows as offline** (`Get-Disk`, "Offline by policy"): bring it online
   read-only from an admin shell first, so nothing can change it, then give it a letter:
   `Set-Disk <n> -IsReadOnly $true; Set-Disk <n> -IsOffline $false`.
+- **A disk with no partitions Windows can see** (`Get-Disk` shows 0 partitions, 0 allocated):
+  run `scripts/probe-disk.py <n>` in an admin shell. Its count of non-empty samples says how
+  much of the disk holds data. Almost none means it was wiped or trimmed: an SSD discards
+  freed blocks, so that data is gone. It also finds wiped partition tables with a surviving
+  backup GPT, file-system and encryption signatures, and tells encrypted data from
+  compressed. For an ext file system, rerun it with
+  the start sector to read its superblock: label, last mount point and dates usually say what
+  the disk was for. Linux file systems can then be read in WSL
+  (`wsl --mount \\.\PHYSICALDRIVE<n> --bare`, then `mount -o ro,noload` with the offset).
+  `noload` stops the journal replay, which would write. The first disk probed this way was
+  a 2021 Chia plotting scratch disk: ext4, 148 files, nothing to keep.
 - **A drive that holds other drives**: an old system disk often contains an older copy kept
   as a folder (`E:\_old-c`) and `Windows.old` from a reinstall. Check a nested copy against
   any copy already salvaged: `robocopy <a> <b> /L /E /XJ /NJH /NJS /NDL /NC /NS /FP` in

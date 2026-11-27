@@ -77,8 +77,9 @@ def main() -> None:
         state = ("verified" if copy.get("verified") else "PROBLEMS") if copy else "-"
         if check:
             state += f", re-checked {check['when'][:10]}" + ("" if check["ok"] else " with PROBLEMS")
-        files = f"{copy['files']} ({copy['bytes'] / 1e9:.2f} GB), {state}" if copy else "-"
-        lines.append(f"| **{d.name}** | `{copy.get('drive', '?')}` | {files} | "
+        files = f"{copy['files']} ({copy['bytes'] / 1e9:.2f} GB), {state}" if copy else "nothing copied, see decisions.md"
+        source = f"`{copy['drive']}`" if copy else "-"
+        lines.append(f"| **{d.name}** | {source} | {files} | "
                      f"{'`software.md`' if (d / 'software.md').exists() else '-'} | "
                      f"{'`salvage.md`' if (d / 'salvage.md').exists() else '-'} |")
     lines += ["", f"Folder: `{drives}`. Each drive's `salvage.md` says what the drive was, what was saved and "

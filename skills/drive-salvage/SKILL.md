@@ -104,6 +104,7 @@ never goes in a repo.
   `add-old-drive`, `add-live`, `gaps`, `preview`, `backup`, `verify`, `index`
 - **`scripts/personal-data.py`** — `inventory`, `copy`, `leftovers`, `check`, `report`
 - **`scripts/overview.py`** — the archive's front page and cross-archive game list
+- **`scripts/probe-disk.py`** — what's on a disk Windows sees no partitions on (admin, read-only)
 - **`references/retiring-a-drive.md`** — the full procedure, step by step
 - **`references/game-saves.md`** — the archive layout, targets, custom games, the index, restoring
 
