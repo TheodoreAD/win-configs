@@ -87,11 +87,13 @@ You should see the WSL user, a `microsoft` kernel, and `no-hc-yet` the first tim
 ## 4. Add it to Herdr
 
 ```bash
-hc machine add --via "$HOME/.local/bin/herdr-via-wsl <windows-host> Ubuntu-24.04" --name <windows-host>--wsl
+hc machine add --via "$HOME/.local/bin/herdr-via-wsl <windows-host> Ubuntu-24.04" --name <windows-host>--wsl --install
 ```
 
-When asked whether to install `hc` there, say yes. It copies the Linux `hc` into WSL's
-`~/.local/bin`, and the bridge puts that folder on PATH.
+`--install` copies the Linux `hc` into WSL's `~/.local/bin`, and the bridge puts that folder on
+PATH. Without the flag, `hc` asks first in a terminal. Claude's shell is not a terminal, so pass
+the flag rather than wait for a question that never comes. It printed `… now has hc 0.1.22` the
+first time this ran, on 2026-11-27.
 
 ## 5. WSL's lifetime
 

@@ -612,6 +612,13 @@ def machine_name(m: dict) -> str:
     return str(m.get("name") or m.get("id") or "?")
 
 
+def machine_summary(m: dict) -> str:
+    """One readable line from `hc machine ls`' JSON. The raw object, cut at a fixed width, lost
+    the `state` field first, since it comes late: a connected WSL machine printed "connec"."""
+    how = f"via {m.get('target')}" if m.get("via") else f"ssh {m.get('target') or m.get('host') or '?'}"
+    return f"{m.get('state') or 'state unknown'}, hc {m.get('version') or '?'}, {how}"
+
+
 def managed_hosts() -> list[str]:
     """Windows machines this skill set up here: `Host <name>` entries in ~/.ssh/config whose
     key follows the id_ed25519_<name> convention. Other SSH hosts are left alone."""
@@ -659,7 +666,7 @@ def linux_doctor(r: Report, args) -> None:
         covered = {n for h in hosts for n in (h, args.wsl_machine or wsl_name(h))}
         for mach in machines:
             if machine_name(mach) not in covered:
-                r.add(INFO, f"Other Herdr machine '{machine_name(mach)}'", json.dumps(mach)[:200])
+                r.add(INFO, f"Other Herdr machine '{machine_name(mach)}'", machine_summary(mach))
 
 
 def linux_host_checks(r: Report, args, host: str, local_ver: str | None) -> None:
@@ -745,7 +752,7 @@ def linux_host_checks(r: Report, args, host: str, local_ver: str | None) -> None
                 r.add(OK, "WSL via Windows", f"bridge answers; {hc_line}")
                 if "hc=none" in hc_line:
                     r.add(WARN, "hc inside WSL", "not installed yet",
-                          f"hc machine add ... --name {wsl_machine} installs it (references/wsl.md, step 4)")
+                          f"hc machine add ... --name {wsl_machine} --install installs it (references/wsl.md, step 4)")
                 elif local_ver and version_of(hc_line) != local_ver:
                     r.add(WARN, "hc versions match", f"here {local_ver}, WSL {version_of(hc_line)}",
                           f"hc machine update {wsl_machine}")
@@ -758,7 +765,7 @@ def linux_host_checks(r: Report, args, host: str, local_ver: str | None) -> None
         for name in [host] + ([] if args.no_wsl else [wsl_machine]):
             r.add(OK if name in names else FAIL, f"Herdr machine '{name}'", "added" if name in names else "not added",
                   f"hc machine add {host}" if name == host else
-                  f'hc machine add --via "{wrapper} {host} {distro}" --name {wsl_machine}')
+                  f'hc machine add --via "{wrapper} {host} {distro}" --name {wsl_machine} --install')
 
 
 def linux_status(r: Report, args) -> None:
@@ -769,7 +776,7 @@ def linux_status(r: Report, args) -> None:
     if not machines:
         r.add(WARN, "Herdr machines", "none added")
     for m in machines:
-        r.add(INFO, f"Machine '{machine_name(m)}'", json.dumps(m)[:200])
+        r.add(INFO, f"Machine '{machine_name(m)}'", machine_summary(m))
     for host in ([args.host] if args.host else managed_hosts()):
         code, out, err = ssh_batch(host, ["hc", "server", "status", "--json"], timeout=15)
         try:

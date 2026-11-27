@@ -33,8 +33,20 @@ Windows side's firewall, `AllowUsers` and key `from=` need that IP.
 
 ## 1. Herdr desktop app
 
-If `hc` is missing, install the app from [herdr.dev](https://herdr.dev/) and start it once.
-`hc --version` should then work in a terminal.
+If `hc` is missing, install the app and start it once. `hc --version` should then work in a
+terminal.
+
+- **On a machine set up by `power-user-linux-setup`**, it is declared there as
+  `[packages.herdr-app]`, so `inv tools.install` installs it. The same package seeds
+  `~/.config/herdr-app/settings.json` before the first start and exports `HERDR_TELEMETRY=0`.
+  That repo's `inv herdr.install-mods` adds the Estro layout and mods from `herdr/README.md`.
+- **Anywhere else**, use the installer from [herdr.dev](https://herdr.dev/).
+
+**Herdr's usage telemetry is on by default** in release builds: a daily report with a random
+install id to `telemetry.herdr.dev`. Before the first start, put `"telemetry": false` in
+`~/.config/herdr-app/settings.json` (this repo's `herdr/settings.json` carries it), or turn it off
+in Settings → Privacy. `HERDR_TELEMETRY=0` covers one launch only. Telemetry is a decision, not a
+default, so say so to the user rather than installing past it.
 
 ## 2. A key used only for this
 
