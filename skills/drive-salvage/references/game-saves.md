@@ -106,8 +106,16 @@ it records per game:
   clients recorded only the date).
 - **Store IDs and cloud saves**: Steam and GOG IDs, and which stores keep cloud saves for it,
   from Ludusavi's manifest.
-- **Mods**: folders named `mods`, `mod`, `Workshop`, `BepInEx`, `override` and the like, next
-  to the saves or in the install folder, with the names inside them. Also Steam Workshop items.
+- **Mods and add-ons**: which ones you had, as names. The mod files themselves aren't kept,
+  since they can be downloaded again. Found in:
+  - **Mod folders** (`mods`, `mod`, `addons`, `Workshop`, `BepInEx`, `override` and the like),
+    next to the saves or in the install folder, with every name inside them
+  - **Vortex**, from the folder names of its staged mods: the mod's name, its Nexus Mods ID
+    (look it up again at `nexusmods.com/<game>/mods/<id>`), version and install date, plus the
+    downloaded archives. Matched to the game by Vortex's game id. A game with no saves here
+    gets its own section at the end of `games.md`.
+  - **Steam Workshop items**: each item's id, with its own name where its files carry one
+    (ARK's `mod.info`, a Starbound `.pak`'s metadata, a `name` or `title` in a small json file)
 - **Acquired**: `steam`, `gog`, `epic`, `downloaded`, `mixed` (owned on a store, but this copy
   was downloaded, often bought later) or `unknown`. It comes with the evidence, and nothing is
   guessed:

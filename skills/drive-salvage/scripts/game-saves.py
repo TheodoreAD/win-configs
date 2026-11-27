@@ -53,6 +53,7 @@ import json
 import os
 import re
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -422,7 +423,71 @@ def verify(arc: Archive, name: str, games: list[str] = ()) -> int:
 # uses, and mods found next to the saves, in the install folder or in Steam Workshop.
 
 # Not "plugins": Unity games ship their engine DLLs in <game>_Data/Plugins.
-MOD_DIRS = {"mods", "mod", "workshop", "bepinex", "override", "modding", "usermods"}
+MOD_DIRS = {"mods", "mod", "workshop", "bepinex", "override", "modding", "usermods", "addons", "add-ons"}
+# Vortex names each staged mod "<name>-<Nexus id>-<version>-<install timestamp>".
+VORTEX_MOD = re.compile(r"^(?P<name>.+?)-(?P<id>\d+)-(?P<version>[0-9a-z][0-9a-z.\-]*?)(?:-(?P<ts>1\d{9}))?$", re.I)
+
+
+def workshop_title(item: Path) -> str | None:
+    """A Workshop item's own name, where its files carry one: ARK's mod.info, a Starbound
+    .pak's metadata, or a name/title field in a small json/info file."""
+    try:
+        info = item / "mod.info"
+        if info.is_file():  # ARK: a length-prefixed string first
+            b = info.read_bytes()
+            n = struct.unpack_from("<i", b, 0)[0]
+            if 0 < n < 200:
+                return b[4:4 + n].rstrip(b"\0").decode("utf-8", errors="replace")
+        for pak in item.glob("*.pak"):  # Starbound: SBAsset6, metadata at the index offset
+            with open(pak, "rb") as f:
+                head = f.read(16)
+                if head[:8] == b"SBAsset6":
+                    f.seek(struct.unpack(">Q", head[8:16])[0])
+                    idx = f.read(1 << 16)
+                    k = idx.find(b"friendlyName")
+                    if k >= 0 and idx[k + 12] == 5:  # type 5 = string, then a VLQ length
+                        pos, n = k + 13, 0
+                        while True:
+                            c = idx[pos]
+                            n = (n << 7) | (c & 0x7F)
+                            pos += 1
+                            if not c & 0x80:
+                                break
+                        return idx[pos:pos + n].decode("utf-8", errors="replace")
+        for meta in list(item.glob("*.json"))[:5] + list(item.glob("*.txt"))[:3]:
+            if meta.stat().st_size < 200_000:
+                m = re.search(r'"(?:title|name|friendlyName)"\s*:\s*"([^"]{2,120})"', meta.read_text(errors="replace"))
+                if m:
+                    return m[1]
+    except (OSError, IndexError, struct.error):
+        pass
+    return None
+
+
+def vortex_mods(profiles: list[Path]) -> dict[str, dict]:
+    """Per Vortex game id: the staged (installed) mods, parsed from their folder names, and the
+    downloaded archives. Only the names are kept; the mods themselves are re-downloadable."""
+    found: dict[str, dict] = {}
+    for prof in profiles:
+        v = prof / "AppData/Roaming/Vortex"
+        if not v.is_dir():
+            continue
+        for g in v.iterdir():
+            if not (g / "mods").is_dir():
+                continue
+            mods = []
+            for m in sorted((g / "mods").iterdir(), key=lambda p: p.name.lower()):
+                if m.name.startswith(("__", ".")) or not m.is_dir():  # vortex.deployment.* files
+                    continue
+                mm = VORTEX_MOD.match(m.name)
+                mods.append({"name": mm["name"], "nexusId": int(mm["id"]), "version": mm["version"].replace("-", "."),
+                             "installed": day(int(mm["ts"])) if mm["ts"] else None, "folder": m.name}
+                            if mm else {"name": m.name, "folder": m.name})
+            downloads = sorted(p.name for p in (v / "downloads" / g.name).glob("*")) if (v / "downloads" / g.name).is_dir() else []
+            found.setdefault(g.name, {"staged": [], "downloads": []})
+            found[g.name]["staged"] += mods
+            found[g.name]["downloads"] += downloads
+    return found
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".dds", ".webp"}
 # Engine bookkeeping that sits next to saves; kept in the backup, left out of the timeline.
 NOISE_DIRS = {"unity", "analytics", "logs", "log", "crashes", "crashreports", "cache", "shadercache"}
@@ -580,7 +645,7 @@ def steam_info(steam_roots: list[Path]) -> tuple[dict, dict, dict]:
             if st.get("appid") and st.get("installdir"):
                 installs[st["appid"]] = root / "steamapps" / "common" / st["installdir"]
         for d in root.glob("steamapps/workshop/content/*"):
-            workshop[d.name] = sorted(c.name for c in d.iterdir())
+            workshop[d.name] = [{"id": c.name, "title": workshop_title(c)} for c in sorted(d.iterdir())]
     return played, installs, workshop
 
 
@@ -619,7 +684,7 @@ def mod_folders(top: Path, depth: int = 3) -> dict[str, list[str]]:
                 p = Path(r) / d
                 names = sorted(c.name for c in p.iterdir() if c.name.lower() not in ("desktop.ini",))
                 if names:
-                    found[slash(p.relative_to(top))] = names[:40]
+                    found[slash(p.relative_to(top))] = names
     return found
 
 
@@ -755,6 +820,18 @@ def cmd_index(a, arc: Archive) -> None:
         entry["emulatorSaves"] = info
         entry["_evidence"].append(("downloaded", f"saves in {'/'.join(info['emulator'])} emulator folder {appid}"))
 
+    # Mods a mod manager installed: matched to a game by its Vortex game id ("witcher3",
+    # "valheim"), else kept under the manager so no list is lost.
+    unmatched = {}
+    for gid, info in vortex_mods(profiles).items():
+        key_ = release_name(gid)
+        match = next((g for n, g in games.items() if key_ and (key_ in release_name(n) or release_name(n) in key_)
+                      and len(release_name(n)) > 3), None)
+        if match:
+            match["vortexMods"] = info
+        else:
+            unmatched[gid] = info
+
     overrides = {k.lower(): v for k, v in (arc.custom.get("acquired") or {}).items()}
     for g in games.values():
         evidence = g.pop("_evidence", [])
@@ -774,8 +851,9 @@ def cmd_index(a, arc: Archive) -> None:
             g["acquiredEvidence"] = [e for _, e in evidence]
 
     out = arc.root / a.name
-    write_json(out / "games.json", {"target": a.name, "scope": t["scope"], "games": games})
-    write_index_md(out / "games.md", a.name, t, games)
+    write_json(out / "games.json", {"target": a.name, "scope": t["scope"], "games": games,
+                                    "vortexUnmatched": unmatched})
+    write_index_md(out / "games.md", a.name, t, games, unmatched)
     with_play = sum(1 for g in games.values() if "steam" in g)
     with_mods = sum(1 for g in games.values() if "mods" in g or "steamWorkshopItems" in g)
     acquired = {}
@@ -787,7 +865,18 @@ def cmd_index(a, arc: Archive) -> None:
           f"{out / 'games.json'}\n{out / 'games.md'}")
 
 
-def write_index_md(path: Path, name: str, t: dict, games: dict) -> None:
+def vortex_lines(vm: dict) -> list[str]:
+    out = [f"- **Vortex mods** ({len(vm['staged'])} installed; names only, the mods are re-downloadable):"]
+    for m in vm["staged"]:
+        bits = [f"Nexus {m['nexusId']}" if m.get("nexusId") else "", f"v{m['version']}" if m.get("version") else "",
+                f"installed {m['installed']}" if m.get("installed") else ""]
+        out.append(f"  - {m['name']}" + (f" ({', '.join(b for b in bits if b)})" if any(bits) else ""))
+    if vm.get("downloads"):
+        out.append(f"  - downloaded archives: {', '.join(f'`{d}`' for d in vm['downloads'])}")
+    return out
+
+
+def write_index_md(path: Path, name: str, t: dict, games: dict, unmatched: dict | None = None) -> None:
     rows = sorted(games.values(), key=lambda g: g.get("lastSave") or "", reverse=True)
     lines = [f"# Game saves: {name}", "", f"From `{t['scope']}`, newest save first.", ""]
     for g in rows:
@@ -822,14 +911,22 @@ def write_index_md(path: Path, name: str, t: dict, games: dict) -> None:
         if g.get("installFolder"):
             lines.append(f"- **Installed at**: `{g['installFolder']}`")
         for k, v in (g.get("mods") or {}).items():
-            lines.append(f"- **Mods** ({k}): " + ", ".join(f"`{n}`" for n in v[:15]) + (" ..." if len(v) > 15 else ""))
+            lines.append(f"- **Mods** ({k}): " + ", ".join(f"`{n}`" for n in v))
+        if vm := g.get("vortexMods"):
+            lines += vortex_lines(vm)
         if g.get("steamWorkshopItems"):
-            lines.append(f"- **Steam Workshop**: {len(g['steamWorkshopItems'])} items")
+            items = g["steamWorkshopItems"]
+            lines.append(f"- **Steam Workshop** ({len(items)} items): "
+                         + ", ".join(f"{i['title']} ({i['id']})" if i.get("title") else i["id"] for i in items))
         if g.get("registryKeys"):
             lines.append(f"- **Registry**: " + ", ".join(f"`{k}`" for k in g["registryKeys"][:3]))
         if g.get("screenshotsInSaves"):
             lines.append(f"- **Images with the saves**: {g['screenshotsInSaves']}")
         lines.append("")
+    if unmatched:
+        lines += ["## Vortex mods for games with no saves here", ""]
+        for gid, vm in sorted(unmatched.items()):
+            lines += [f"### {gid}", ""] + vortex_lines(vm) + [""]
     path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
 
 
