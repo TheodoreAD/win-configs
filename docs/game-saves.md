@@ -100,6 +100,18 @@ it records per game:
   from Ludusavi's manifest.
 - **Mods**: folders named `mods`, `mod`, `Workshop`, `BepInEx`, `override` and the like, next
   to the saves or in the install folder, with the names inside them. Also Steam Workshop items.
+- **Acquired**: `steam`, `gog`, `epic`, `downloaded`, `mixed` (owned on a store, but this copy
+  was downloaded, often bought later) or `unknown`. It comes with the evidence, and nothing is
+  guessed:
+  - **Account libraries on this PC**, which count for old drives too: GOG Galaxy's library
+    with purchase dates (`galaxy-2.0.db`, read from a copy), and the games played on this
+    PC's Steam account, with play time
+  - **The copy itself**: installed through Steam, GOG or Epic install markers, a
+    release-style folder name (`IGG-…`, `Name.v1.2`), crack or emulator files in the install
+    folder, or saves in an emulator folder (CODEX, SKIDROW, SmartSteamEmu)
+
+  Emulator save folders are named by Steam app id, so they're also matched to games by that
+  id. Correct a wrong flag with an `acquired` map in `custom-games.json`.
 - **Install folder**, settings files, images kept with the saves, and the registry keys the
   game uses. For an old drive those keys aren't in the backup; copy the old profile's
   `NTUSER.DAT` to recover them.
@@ -115,7 +127,8 @@ it records per game:
     {"name": "Grim Dawn", "integration": "extend", "files": ["<winDocuments>/My Games/Grim Dawn_BAK"]},
     {"name": "Steam emulator saves", "files": ["{drive}/Users/Public/Documents/Steam/CODEX"]}
   ],
-  "notSaves": ["AppData/Roaming/Autodesk", "Documents/Fax"]
+  "notSaves": ["AppData/Roaming/Autodesk", "Documents/Fax"],
+  "acquired": {"Grim Dawn": "steam"}
 }
 ```
 
@@ -127,6 +140,7 @@ it records per game:
 - **`integration`**: `extend` adds paths to a game Ludusavi already knows. The default,
   `override`, defines a new game, and replaces a known game of the same name.
 - **`notSaves`**: profile-relative folders that `gaps` stops reporting.
+- **`acquired`**: game name to how you got it, overriding what `index` found.
 
 ## Restoring
 

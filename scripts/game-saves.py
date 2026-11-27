@@ -20,12 +20,14 @@ custom-games.json:
   {"games": [{"name": "Defender's Quest", "files": ["<winAppData>/LevelUpLabs/DefendersQuest"]},
              {"name": "Grim Dawn", "integration": "extend", "files": ["<winDocuments>/My Games/Grim Dawn_BAK"]},
              {"name": "Steam emulator saves (CODEX)", "files": ["{drive}/Users/Public/Documents/Steam/CODEX"]}],
-   "notSaves": ["AppData/Roaming/Autodesk", "Documents/Fax"]}
+   "notSaves": ["AppData/Roaming/Autodesk", "Documents/Fax"],
+   "acquired": {"Grim Dawn": "steam"}}
   Paths use Ludusavi's placeholders (<home>, <winAppData>, <winLocalAppData>, <winLocalAppDataLow>,
   <winDocuments>), which resolve inside an old drive's profiles too. {drive} is the target's
   drive root (the system drive for live targets); use it where a placeholder points at this PC
   instead, like the Public folder. "extend" adds paths to a game Ludusavi already knows.
-  notSaves are profile-relative folders that `gaps` stops reporting.
+  notSaves are profile-relative folders that `gaps` stops reporting. acquired overrides how
+  `index` says a game was obtained.
 
 Usage (the archive is $GAME_SAVES_HOME, or --archive):
   uv run python scripts/game-saves.py add-old-drive old-pc --drive E:/old-c --installs E:/old-c/_games
@@ -382,6 +384,103 @@ IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".dds", ".webp"}
 NOISE_DIRS = {"unity", "analytics", "logs", "log", "crashes", "crashreports", "cache", "shadercache"}
 
 
+# Where a copy came from. Evidence only: a store's own install records or markers, or the
+# traces a cracked release leaves. What it can't tell is "unknown"; custom-games.json's
+# "acquired" map overrides it per game.
+EMULATOR_DIRS = {"codex", "skidrow", "smartsteamemu", "ali213", "3dmgame", "goldberg", "steamemu"}
+CRACK_FILES = {"steam_emu.ini", "smartsteamemu.ini", "smartsteamemu.dll", "codex.ini", "steam_api.cdx",
+               "steam_api64.cdx", "ali213.ini", "3dmgame.ini", "3dmgame.dll", "cream_api.ini",
+               "skidrow.ini", "cpy.ini", "onlinefix.ini", "steamclient_loader.exe", "uplay_r1_loader.dll.bak"}
+CRACK_DIRS = {"steam_settings", "crack", "_crack"}
+ACCOUNTS: tuple[dict, dict] = ({}, {})  # set by `index` from account_libraries()
+RELEASE_PREFIX = re.compile(r"^(igg|codex|skidrow|plaza|reloaded|flt|darksiders|cpy|elamigos|fitgirl)[-_. ]", re.I)
+RELEASE_VERSION = re.compile(r"[._ -]v?\d+(?:[._]\d+)+[a-z]?\b.*$|[._ -]v\d+\b.*$", re.I)
+
+
+def account_libraries() -> tuple[dict, dict]:
+    """What the accounts on this PC own, whatever drive a copy came from: GOG Galaxy's library
+    ({gog id: purchase date}) and this PC's Steam account ({app id: play time, last played})."""
+    gog = {}
+    db = Path(os.environ.get("ProgramData", "C:/ProgramData")) / "GOG.com/Galaxy/storage/galaxy-2.0.db"
+    if db.is_file():
+        import sqlite3
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmp:  # Galaxy keeps it open; read a copy
+            copy = Path(tmp) / db.name
+            shutil.copy2(db, copy)
+            con = sqlite3.connect(f"file:{copy.as_posix()}?mode=ro", uri=True)
+            try:
+                rows = con.execute("select gameReleaseKey, coalesce(purchaseDate, addedDate) "
+                                   "from ProductPurchaseDates where gameReleaseKey like 'gog\\_%' escape '\\'")
+                gog = {k.split("_", 1)[1]: (d or "")[:10] for k, d in rows}
+            except sqlite3.Error:
+                pass
+            finally:
+                con.close()
+    steam_root = None
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Valve\Steam") as k:
+            steam_root = Path(winreg.QueryValueEx(k, "SteamPath")[0])
+    except OSError:
+        pass
+    played, _, _ = steam_info([steam_root]) if steam_root and steam_root.is_dir() else ({}, {}, {})
+    return gog, played
+
+
+def release_name(name: str) -> str:
+    """A folder or game name reduced for matching: no release prefix, version or punctuation."""
+    n = RELEASE_PREFIX.sub("", name)
+    n = RELEASE_VERSION.sub("", n)
+    return re.sub(r"[^a-z0-9]", "", n.lower())
+
+
+def acquisition_evidence(entry: dict, install: Path | None, played: dict, steam_installs: dict,
+                         files: list[dict]) -> list[tuple[str, str]]:
+    ev = []
+    sid = str(entry.get("steamId", ""))
+    if sid and sid in steam_installs:
+        ev.append(("steam", "installed through Steam"))
+    if sid and played.get(sid, {}).get("lastPlayed"):
+        ev.append(("steam", f"launched from Steam, last {day(played[sid]['lastPlayed'])}"))
+    if install and install.is_dir():
+        if RELEASE_PREFIX.match(install.name) or (RELEASE_VERSION.search(install.name) and "." in install.name):
+            ev.append(("downloaded", f"release-style folder name {install.name}"))
+        base = len(install.parts)
+        for r, dirs, fs in os.walk(install):
+            if len(Path(r).parts) - base >= 3:
+                dirs[:] = []
+            lower = {f.lower() for f in fs}
+            if hit := sorted(lower & CRACK_FILES):
+                ev.append(("downloaded", f"{hit[0]} in {slash(Path(r).relative_to(install)) or '.'}"))
+            if hit := sorted({d.lower() for d in dirs} & CRACK_DIRS):
+                ev.append(("downloaded", f"{hit[0]} folder in the install"))
+            if any(f.startswith("goggame-") and f.endswith(".info") for f in lower):
+                ev.append(("gog", "GOG install marker (goggame-*.info)"))
+            if ".egstore" in {d.lower() for d in dirs}:
+                ev.append(("epic", "Epic install marker (.egstore)"))
+    for f in files:
+        if {x.lower() for x in Path(f["path"]).parts} & EMULATOR_DIRS:
+            ev.append(("downloaded", "saves in an emulator folder"))
+            break
+    gog_owned, steam_account = ACCOUNTS
+    if (gid := str(entry.get("gogId", ""))) and gid in gog_owned:
+        bought = gog_owned[gid]
+        later = ", after the last save" if bought and entry.get("lastSave") and bought > entry["lastSave"] else ""
+        ev.append(("gog", f"in your GOG library{', bought ' + bought if bought else ''}{later}"))
+    if sid and (p := steam_account.get(sid)) and (p["playtimeMinutes"] or p["lastPlayed"]):
+        hours = f"{p['playtimeMinutes'] / 60:.1f} h, " if p["playtimeMinutes"] else ""
+        ev.append(("steam", f"played on your current Steam account ({hours}last {day(p['lastPlayed'])})"))
+        entry["steamAccount"] = {"playtimeHours": round(p["playtimeMinutes"] / 60, 1),
+                                 "lastPlayed": day(p["lastPlayed"]) if p["lastPlayed"] else None}
+    seen, out = set(), []
+    for e in ev:  # one line per distinct finding
+        if e not in seen:
+            seen.add(e)
+            out.append(e)
+    return out[:8]
+
+
 def vdf(text: str) -> dict:
     """Valve's KeyValues text format, enough of it for localconfig.vdf and appmanifest files."""
     root, stack, k = {}, [], None
@@ -499,8 +598,10 @@ def cmd_index(a, arc: Archive) -> None:
     steam_roots = [Path(r["path"]) for r in roots if r["store"] == "steam"]
     install_roots = [Path(r["path"]) for r in roots if r["store"] in ("other", "gogGalaxy")]
     played, steam_installs, workshop = steam_info(steam_roots)
+    global ACCOUNTS
+    ACCOUNTS = account_libraries()
 
-    games = {}
+    games, emulated = {}, {}
     backup = arc.root / a.name / "backup"
     for m in sorted(backup.glob("*/mapping.yaml")):
         game, stored = read_mapping(m)
@@ -563,12 +664,18 @@ def cmd_index(a, arc: Archive) -> None:
             entry["registryKeys"] = sorted(man["registry"])
             if t["kind"] == "old-drive":
                 entry["registryNote"] = "not in this backup; the old profile's NTUSER.DAT is copied with the personal data"
-        # Install folder: Steam's own record, else a known install-folder name under an install root.
-        names = {n.lower() for n in (man.get("installDir") or {})} | {game.lower()}
+        # Install folder: Steam's own record, else a known install-folder name under an install
+        # root, also when it carries a release prefix or version ("IGG-Name.v1.2").
+        names = {release_name(n) for n in (man.get("installDir") or {})} | {release_name(game)}
         install = steam_installs.get(str(entry.get("steamId", "")))
         if not install:
             install = next((c for r in install_roots if r.is_dir() for c in r.iterdir()
-                            if c.is_dir() and c.name.lower() in names), None)
+                            if c.is_dir() and release_name(c.name) in names), None)
+        for f in files:  # emulator save folders are named by Steam app id
+            parts = [x.lower() for x in Path(f["path"]).parts]
+            for i, x in enumerate(parts[:-1]):
+                if x in EMULATOR_DIRS and parts[i + 1].isdigit():
+                    emulated.setdefault(parts[i + 1], []).append((x, f))
         mods = {}
         for loc in {Path(common)} if common else set():
             for k, v in mod_folders(loc, 2).items():
@@ -579,14 +686,59 @@ def cmd_index(a, arc: Archive) -> None:
                 mods[f"install: {k}"] = v
         if mods:
             entry["mods"] = mods
+        entry["_evidence"] = acquisition_evidence(entry, install, played, steam_installs, files)
         games[game] = entry
+
+    # Saves in emulator folders belong to the game with that Steam app id; that's also the only
+    # way those folders get a name.
+    by_steam_id = {str(v["steam"]["id"]): n for n, v in manifest.items() if (v.get("steam") or {}).get("id")}
+    for appid, hits in sorted(emulated.items()):
+        name = by_steam_id.get(appid, f"Steam app {appid}")
+        dated = sorted(f["mtime"] for _, f in hits if f["mtime"])
+        info = {"emulator": sorted({e for e, _ in hits}), "files": len(hits),
+                "firstSave": day(dated[0]) if dated else None, "lastSave": day(dated[-1]) if dated else None,
+                "storedUnder": sorted({g for g, gi in games.items()
+                                       if {slash(Path(f["path"]).parent) for _, f in hits} & set(gi.get("locations", []))})}
+        entry = games.setdefault(name, {"name": name, "steamId": int(appid), "savedOnlyByEmulator": True,
+                                        "lastSave": info["lastSave"], "firstSave": info["firstSave"],
+                                        "files": len(hits), "saveFiles": len(hits), "bytes": 0,
+                                        "activeDays": len({day(ts) for ts in dated}), "_evidence": []})
+        if entry.get("savedOnlyByEmulator") and not entry["_evidence"]:
+            if gid := (manifest.get(name, {}).get("gog") or {}).get("id"):
+                entry["gogId"] = gid
+            entry["_evidence"] = acquisition_evidence(entry, None, played, steam_installs, [])
+        entry["emulatorSaves"] = info
+        entry["_evidence"].append(("downloaded", f"saves in {'/'.join(info['emulator'])} emulator folder {appid}"))
+
+    overrides = {k.lower(): v for k, v in (arc.custom.get("acquired") or {}).items()}
+    for g in games.values():
+        evidence = g.pop("_evidence", [])
+        kinds = {k for k, _ in evidence}
+        stores = sorted(kinds - {"downloaded"})
+        if g["name"].lower() in overrides:
+            g["acquired"], g["acquiredSource"] = overrides[g["name"].lower()], "custom-games.json"
+        elif stores and "downloaded" in kinds:
+            g["acquired"] = "mixed: " + ", ".join(stores) + " and downloaded"
+        elif stores:
+            g["acquired"] = ", ".join(stores)
+        elif "downloaded" in kinds:
+            g["acquired"] = "downloaded"
+        else:
+            g["acquired"] = "unknown"
+        if evidence:
+            g["acquiredEvidence"] = [e for _, e in evidence]
 
     out = arc.root / a.name
     write_json(out / "games.json", {"target": a.name, "scope": t["scope"], "games": games})
     write_index_md(out / "games.md", a.name, t, games)
     with_play = sum(1 for g in games.values() if "steam" in g)
     with_mods = sum(1 for g in games.values() if "mods" in g or "steamWorkshopItems" in g)
+    acquired = {}
+    for g in games.values():
+        k = g["acquired"].split(":")[0]
+        acquired[k] = acquired.get(k, 0) + 1
     print(f"indexed {len(games)} games: {with_play} with Steam play time, {with_mods} with mods\n"
+          f"acquired: {', '.join(f'{k} {n}' for k, n in sorted(acquired.items(), key=lambda x: -x[1]))}\n"
           f"{out / 'games.json'}\n{out / 'games.md'}")
 
 
@@ -599,12 +751,23 @@ def write_index_md(path: Path, name: str, t: dict, games: dict) -> None:
         span = f"{g['firstSave']} to {g['lastSave']}" if g.get("firstSave") else "no dates"
         lines.append(f"- **Saves**: {g['saveFiles']} save files ({g['files']} files, "
                      f"{g['bytes'] / 1e6:.1f} MB), {span}, on {g['activeDays']} day{'' if g['activeDays'] == 1 else 's'}")
+        lines.append(f"- **Acquired**: {g.get('acquired', 'unknown')}"
+                     + (f" ({'; '.join(g['acquiredEvidence'][:3])})" if g.get("acquiredEvidence") else "")
+                     + (" (set in custom-games.json)" if g.get("acquiredSource") else ""))
+        if g.get("emulatorSaves"):
+            e = g["emulatorSaves"]
+            lines.append(f"- **Emulator saves**: {e['files']} files in {', '.join(e['emulator'])}, "
+                         f"{e['firstSave']} to {e['lastSave']}")
         if g.get("savesByYear"):
             lines.append("- **By year**: " + ", ".join(f"{y}: {n}" for y, n in sorted(g["savesByYear"].items())))
         if g.get("steam"):
             s = g["steam"]
             hours = f"{s['playtimeHours']} h played, " if s["playtimeHours"] else ""
             lines.append(f"- **Steam**: {hours}last played {s.get('lastPlayed') or 'unknown'}")
+        if g.get("steamAccount"):
+            s = g["steamAccount"]
+            hours = f"{s['playtimeHours']} h played, " if s["playtimeHours"] else ""
+            lines.append(f"- **Steam account now**: {hours}last played {s.get('lastPlayed') or 'unknown'}")
         ids = [f"Steam {g['steamId']}" if g.get("steamId") else "", f"GOG {g['gogId']}" if g.get("gogId") else ""]
         if any(ids):
             lines.append("- **Store IDs**: " + ", ".join(i for i in ids if i)
