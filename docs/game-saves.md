@@ -80,6 +80,32 @@ every save file the root holds now: the backup has it with the same SHA-1, and t
 still matches. A game passes only if every file does. `backup` runs it at the end, and any
 command takes game names to limit it to those.
 
+## The index: when and how each game was played
+
+```shell
+uv run python scripts/game-saves.py index old-pc   # writes <target>/games.json and games.md
+```
+
+Run it after a backup. It reads the backup, so it works after the original drive is gone, and
+it records per game:
+
+- **Save timeline**: first and last save, the number of days with saves, and counts per year
+  and per month. These come from the files' modified dates, which backups keep. Created dates
+  aren't kept. Engine bookkeeping (Unity analytics, logs, crash reports, caches) is left out.
+- **Recent saves**: the ten newest save files by name. Names often tell where you were, like
+  a quest, a map or a date in the game.
+- **Steam**: last-played date and play time, from the Steam install's `localconfig.vdf` (old
+  clients recorded only the date).
+- **Store IDs and cloud saves**: Steam and GOG IDs, and which stores keep cloud saves for it,
+  from Ludusavi's manifest.
+- **Mods**: folders named `mods`, `mod`, `Workshop`, `BepInEx`, `override` and the like, next
+  to the saves or in the install folder, with the names inside them. Also Steam Workshop items.
+- **Install folder**, settings files, images kept with the saves, and the registry keys the
+  game uses. For an old drive those keys aren't in the backup; copy the old profile's
+  `NTUSER.DAT` to recover them.
+
+`games.md` lists the games newest save first; `games.json` has everything.
+
 ## custom-games.json
 
 ```json

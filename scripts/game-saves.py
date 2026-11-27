@@ -35,6 +35,7 @@ Usage (the archive is $GAME_SAVES_HOME, or --archive):
   uv run python scripts/game-saves.py preview old-pc   # what a backup would copy, nothing written
   uv run python scripts/game-saves.py backup old-pc
   uv run python scripts/game-saves.py verify old-pc    # every current save file is in the backup, same hash
+  uv run python scripts/game-saves.py index old-pc     # games.json/.md: save timeline, play time, mods
 
 A live target skips the folders of every other target inside its scope (an old drive copy
 kept on C: is its own target). Only the system-drive target keeps registry saves. An old
@@ -52,6 +53,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 NOT_USERS = {"public", "default", "default user", "all users", "guest", "defaultapppool"}
@@ -367,6 +369,262 @@ def verify(arc: Archive, name: str, games: list[str] = ()) -> int:
     return 1 if bad else 0
 
 
+# ----------------------------------------------------------------------------- index
+# What the archive can tell about each game, to remember when and how it was played:
+# save timeline (from the files' modified dates, which backups keep), recent save names,
+# Steam play time and last-played date, store IDs and cloud support, registry keys the game
+# uses, and mods found next to the saves, in the install folder or in Steam Workshop.
+
+# Not "plugins": Unity games ship their engine DLLs in <game>_Data/Plugins.
+MOD_DIRS = {"mods", "mod", "workshop", "bepinex", "override", "modding", "usermods"}
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tga", ".dds", ".webp"}
+# Engine bookkeeping that sits next to saves; kept in the backup, left out of the timeline.
+NOISE_DIRS = {"unity", "analytics", "logs", "log", "crashes", "crashreports", "cache", "shadercache"}
+
+
+def vdf(text: str) -> dict:
+    """Valve's KeyValues text format, enough of it for localconfig.vdf and appmanifest files."""
+    root, stack, k = {}, [], None
+    cur = root
+    for m in re.finditer(r'"((?:[^"\\]|\\.)*)"|([{}])', text):
+        tok, brace = m[1], m[2]
+        if brace == "{":
+            new = {}
+            cur[k] = new
+            stack.append(cur)
+            cur, k = new, None
+        elif brace == "}":
+            cur = stack.pop() if stack else root
+        elif k is None:
+            k = tok
+        else:
+            cur[k], k = tok, None
+    return root
+
+
+def find_key(d: dict, name: str):
+    """First nested value under a key named `name`, case-insensitively."""
+    for k, v in d.items():
+        if k.lower() == name.lower():
+            return v
+        if isinstance(v, dict) and (found := find_key(v, name)) is not None:
+            return found
+    return None
+
+
+def steam_info(steam_roots: list[Path]) -> tuple[dict, dict, dict]:
+    """{appid: {playtimeMinutes, lastPlayed}}, {appid: installdir}, {appid: workshop item names}."""
+    played, installs, workshop = {}, {}, {}
+    for root in steam_roots:
+        for cfg in root.glob("userdata/*/config/localconfig.vdf"):
+            # Several sections are called "apps"; take every numeric app id that carries
+            # LastPlayed or Playtime, wherever it sits. Older clients record only LastPlayed.
+            stack = [vdf(cfg.read_text(encoding="utf-8", errors="replace"))]
+            while stack:
+                d = stack.pop()
+                for k, v in d.items():
+                    if not isinstance(v, dict):
+                        continue
+                    if k.isdigit() and ("LastPlayed" in v or "Playtime" in v):
+                        p = played.setdefault(k, {"playtimeMinutes": 0, "lastPlayed": 0})
+                        p["playtimeMinutes"] += int(v.get("Playtime", 0) or 0)
+                        p["lastPlayed"] = max(p["lastPlayed"], int(v.get("LastPlayed", 0) or 0))
+                    else:
+                        stack.append(v)
+        for acf in root.glob("steamapps/appmanifest_*.acf"):
+            st = vdf(acf.read_text(encoding="utf-8", errors="replace")).get("AppState", {})
+            if st.get("appid") and st.get("installdir"):
+                installs[st["appid"]] = root / "steamapps" / "common" / st["installdir"]
+        for d in root.glob("steamapps/workshop/content/*"):
+            workshop[d.name] = sorted(c.name for c in d.iterdir())
+    return played, installs, workshop
+
+
+def placeholder_regex(pattern: str, ctx: dict) -> re.Pattern:
+    """A manifest path pattern (placeholders, * globs) as a regex matching a path or its prefix."""
+    out, i = "", 0
+    for m in re.finditer(r"<(\w+)>|\*\*|\*|[^<*]+", pattern):
+        tok = m[0]
+        if m[1]:
+            vals = ctx.get(m[1])
+            out += "(?:" + "|".join(re.escape(slash(v)) for v in vals) + ")" if vals else "[^/]+"
+        elif tok == "**":
+            out += ".*"
+        elif tok == "*":
+            out += "[^/]*"
+        else:
+            out += re.escape(tok)
+    return re.compile("^" + out + "(?:/|$)", re.IGNORECASE)
+
+
+def day(ts: float) -> str:
+    return time.strftime("%Y-%m-%d", time.localtime(ts))
+
+
+def mod_folders(top: Path, depth: int = 3) -> dict[str, list[str]]:
+    """Mod-like folders under `top` (a few levels down), each with the names inside it."""
+    found = {}
+    if not top.is_dir():
+        return found
+    base_depth = len(top.parts)
+    for r, dirs, _ in os.walk(top):
+        if len(Path(r).parts) - base_depth >= depth:
+            dirs[:] = []
+        for d in list(dirs):
+            if d.lower() in MOD_DIRS:
+                p = Path(r) / d
+                names = sorted(c.name for c in p.iterdir() if c.name.lower() not in ("desktop.ini",))
+                if names:
+                    found[slash(p.relative_to(top))] = names[:40]
+    return found
+
+
+def cmd_index(a, arc: Archive) -> None:
+    t = arc.target(a.name)
+    cfg_dir = arc.config(a.name)
+    cfg = read_json(cfg_dir / "config.yaml", {})
+    r = ludusavi("--try-manifest-update", "manifest", "show", "--api", config=cfg_dir)
+    manifest = json.loads(r.stdout) if r.stdout.strip().startswith("{") else {}
+    scope = Path(t["scope"])
+    profiles = old_profiles(scope) if t["kind"] == "old-drive" else [Path.home()]
+    drive = scope if t["kind"] == "old-drive" else SYSTEM_DRIVE
+    ctx = {"home": profiles, "osUserName": [p.name for p in profiles],
+           "winAppData": [p / "AppData/Roaming" for p in profiles],
+           "winLocalAppData": [p / "AppData/Local" for p in profiles],
+           "winLocalAppDataLow": [p / "AppData/LocalLow" for p in profiles],
+           "winDocuments": [p / "Documents" for p in profiles],
+           "winPublic": [drive / "Users/Public"], "winProgramData": [drive / "ProgramData"],
+           "winDir": [drive / "Windows"]}
+    roots = cfg.get("roots", [])
+    steam_roots = [Path(r["path"]) for r in roots if r["store"] == "steam"]
+    install_roots = [Path(r["path"]) for r in roots if r["store"] in ("other", "gogGalaxy")]
+    played, steam_installs, workshop = steam_info(steam_roots)
+
+    games = {}
+    backup = arc.root / a.name / "backup"
+    for m in sorted(backup.glob("*/mapping.yaml")):
+        game, stored = read_mapping(m)
+        text = m.read_text(encoding="utf-8")
+        when = re.findall(r'when: "([^"]+)"', text)
+        man = manifest.get(game, {})
+        tagged = [(placeholder_regex(pat, ctx), info.get("tags", []))
+                  for pat, info in (man.get("files") or {}).items()
+                  if not info.get("when") or any(w.get("os") in (None, "windows") for w in info["when"])]
+        files = []
+        for p, e in stored.items():
+            drv, rest = p.split(":", 1)
+            copy = m.parent / ("" if e["folder"] == "." else e["folder"]) / f"drive-{drv}" / rest.lstrip("/")
+            mtime = copy.stat().st_mtime if copy.exists() else 0
+            tags = next((tg for rx, tg in tagged if rx.match(p)), [])
+            files.append({"path": p, "size": int(e.get("size", 0)), "mtime": mtime, "tags": tags})
+        noise = [f for f in files if {p.lower() for p in Path(f["path"]).parts} & NOISE_DIRS]
+        kept = [f for f in files if f not in noise]
+        saves = [f for f in kept if "save" in f["tags"]] or \
+                [f for f in kept if "config" not in f["tags"] and Path(f["path"]).suffix.lower() not in
+                 {".ini", ".cfg", ".log", ".txt", ".xml", ".json"} | IMAGE_EXTS]
+        timeline = saves or files
+        dated = sorted(f["mtime"] for f in timeline if f["mtime"])
+        by_year = {}
+        for ts in dated:
+            by_year[day(ts)[:4]] = by_year.get(day(ts)[:4], 0) + 1
+        recent = sorted(saves, key=lambda f: f["mtime"], reverse=True)[:10]
+        locations = sorted({slash(Path(f["path"]).parent) for f in files})
+        common = os.path.commonpath([Path(f["path"]).parent for f in files]) if files else ""
+        entry = {
+            "name": game,
+            "backedUp": when[-1] if when else None,
+            "files": len(files), "bytes": sum(f["size"] for f in files),
+            "saveFiles": len(saves),
+            "configFiles": sorted({Path(f["path"]).name for f in files if "config" in f["tags"]})[:30],
+            "screenshotsInSaves": sum(1 for f in files if Path(f["path"]).suffix.lower() in IMAGE_EXTS),
+            "firstSave": day(dated[0]) if dated else None,
+            "lastSave": day(dated[-1]) if dated else None,
+            "activeDays": len({day(ts) for ts in dated}),
+            "savesByYear": by_year,
+            "savesByMonth": {mo: sum(1 for ts in dated if day(ts)[:7] == mo)
+                             for mo in sorted({day(ts)[:7] for ts in dated})},
+            "recentSaves": [{"name": slash(Path(f["path"]).relative_to(common)) if common else f["path"],
+                             "date": day(f["mtime"])} for f in recent],
+            "locations": locations[:20],
+        }
+        if sid := (man.get("steam") or {}).get("id"):
+            entry["steamId"] = sid
+            p = played.get(str(sid))
+            if p and (p["playtimeMinutes"] or p["lastPlayed"]):
+                entry["steam"] = {"playtimeHours": round(p["playtimeMinutes"] / 60, 1),
+                                  "lastPlayed": day(p["lastPlayed"]) if p["lastPlayed"] else None}
+            if workshop.get(str(sid)):
+                entry["steamWorkshopItems"] = workshop[str(sid)][:100]
+        if gid := (man.get("gog") or {}).get("id"):
+            entry["gogId"] = gid
+        if man.get("cloud"):
+            entry["cloudSaves"] = sorted(k for k, v in man["cloud"].items() if v)
+        if man.get("registry"):
+            entry["registryKeys"] = sorted(man["registry"])
+            if t["kind"] == "old-drive":
+                entry["registryNote"] = "not in this backup; the old profile's NTUSER.DAT is copied with the personal data"
+        # Install folder: Steam's own record, else a known install-folder name under an install root.
+        names = {n.lower() for n in (man.get("installDir") or {})} | {game.lower()}
+        install = steam_installs.get(str(entry.get("steamId", "")))
+        if not install:
+            install = next((c for r in install_roots if r.is_dir() for c in r.iterdir()
+                            if c.is_dir() and c.name.lower() in names), None)
+        mods = {}
+        for loc in {Path(common)} if common else set():
+            for k, v in mod_folders(loc, 2).items():
+                mods[f"saves: {k}"] = v
+        if install and install.exists():
+            entry["installFolder"] = slash(install)
+            for k, v in mod_folders(install).items():
+                mods[f"install: {k}"] = v
+        if mods:
+            entry["mods"] = mods
+        games[game] = entry
+
+    out = arc.root / a.name
+    write_json(out / "games.json", {"target": a.name, "scope": t["scope"], "games": games})
+    write_index_md(out / "games.md", a.name, t, games)
+    with_play = sum(1 for g in games.values() if "steam" in g)
+    with_mods = sum(1 for g in games.values() if "mods" in g or "steamWorkshopItems" in g)
+    print(f"indexed {len(games)} games: {with_play} with Steam play time, {with_mods} with mods\n"
+          f"{out / 'games.json'}\n{out / 'games.md'}")
+
+
+def write_index_md(path: Path, name: str, t: dict, games: dict) -> None:
+    rows = sorted(games.values(), key=lambda g: g.get("lastSave") or "", reverse=True)
+    lines = [f"# Game saves: {name}", "", f"From `{t['scope']}`, newest save first.", ""]
+    for g in rows:
+        lines.append(f"## {g['name']}")
+        lines.append("")
+        span = f"{g['firstSave']} to {g['lastSave']}" if g.get("firstSave") else "no dates"
+        lines.append(f"- **Saves**: {g['saveFiles']} save files ({g['files']} files, "
+                     f"{g['bytes'] / 1e6:.1f} MB), {span}, on {g['activeDays']} day{'' if g['activeDays'] == 1 else 's'}")
+        if g.get("savesByYear"):
+            lines.append("- **By year**: " + ", ".join(f"{y}: {n}" for y, n in sorted(g["savesByYear"].items())))
+        if g.get("steam"):
+            s = g["steam"]
+            hours = f"{s['playtimeHours']} h played, " if s["playtimeHours"] else ""
+            lines.append(f"- **Steam**: {hours}last played {s.get('lastPlayed') or 'unknown'}")
+        ids = [f"Steam {g['steamId']}" if g.get("steamId") else "", f"GOG {g['gogId']}" if g.get("gogId") else ""]
+        if any(ids):
+            lines.append("- **Store IDs**: " + ", ".join(i for i in ids if i)
+                         + (f"; cloud saves on {', '.join(g['cloudSaves'])}" if g.get("cloudSaves") else ""))
+        if g.get("recentSaves"):
+            lines.append("- **Recent saves**: " + "; ".join(f"`{r['name']}` ({r['date']})" for r in g["recentSaves"][:5]))
+        if g.get("installFolder"):
+            lines.append(f"- **Installed at**: `{g['installFolder']}`")
+        for k, v in (g.get("mods") or {}).items():
+            lines.append(f"- **Mods** ({k}): " + ", ".join(f"`{n}`" for n in v[:15]) + (" ..." if len(v) > 15 else ""))
+        if g.get("steamWorkshopItems"):
+            lines.append(f"- **Steam Workshop**: {len(g['steamWorkshopItems'])} items")
+        if g.get("registryKeys"):
+            lines.append(f"- **Registry**: " + ", ".join(f"`{k}`" for k in g["registryKeys"][:3]))
+        if g.get("screenshotsInSaves"):
+            lines.append(f"- **Images with the saves**: {g['screenshotsInSaves']}")
+        lines.append("")
+    path.write_text("\n".join(lines), encoding="utf-8", newline="\n")
+
+
 def cmd_verify(a, arc: Archive) -> None:
     sys.exit(verify(arc, a.name, a.games))
 
@@ -389,17 +647,18 @@ def main() -> None:
     for name, help_ in (("preview", "list what a backup would copy, writing nothing"),
                         ("gaps", "save-like folders on an old drive that nothing covers"),
                         ("backup", "copy the saves into the archive, then verify"),
-                        ("verify", "check every current save file is in the backup with the same hash")):
+                        ("verify", "check every current save file is in the backup with the same hash"),
+                        ("index", "write games.json and games.md: timeline, play time, mods, store IDs")):
         s = sub.add_parser(name, help=help_)
         s.add_argument("name", help="a target name")
-        if name != "gaps":
+        if name not in ("gaps", "index"):
             s.add_argument("games", nargs="*", help="only these games (exact Ludusavi names)")
     a = p.parse_args()
     if not a.archive:
         die("set GAME_SAVES_HOME or pass --archive: the folder that holds the save archive")
     arc = Archive(Path(a.archive))
     {"add-old-drive": cmd_add_old_drive, "add-live": cmd_add_live, "preview": cmd_preview,
-     "gaps": cmd_gaps, "backup": cmd_backup, "verify": cmd_verify}[a.cmd](a, arc)
+     "gaps": cmd_gaps, "backup": cmd_backup, "verify": cmd_verify, "index": cmd_index}[a.cmd](a, arc)
 
 
 if __name__ == "__main__":
