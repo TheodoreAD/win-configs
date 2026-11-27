@@ -65,6 +65,7 @@ def main() -> None:
             ("salvage.md", "the report: start here"), ("decisions.md", "judgment calls, written by hand"),
             ("software.md", "what was installed"), ("manifest.json", "every copied file with its SHA-1"),
             ("copy.json", "copy and re-check results"), ("leftovers.json", "what was left on the drive"),
+            ("deep-survey.md", "the closer look: installs, Recycle Bin, portable tools, partly copied items"),
             ("personal", "the copied files, at their original paths")) if (d / n).exists()]
     lines.append("")
 
