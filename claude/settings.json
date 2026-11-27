@@ -6,12 +6,12 @@
       "PowerShell(uv run invoke *)"
     ],
     "ask": [
-      "WebFetch",
-      "Artifact",
-      "mcp__claude_ai_Claude_Docs"
+      "WebFetch"
     ],
     "deny": [
-      "Bash"
+      "Bash",
+      "Artifact",
+      "mcp__claude_ai_Claude_Docs"
     ]
   },
   "extraKnownMarketplaces": {
