@@ -30,19 +30,19 @@ custom-games.json:
   `index` says a game was obtained.
 
 Usage (the archive is $GAME_SAVES_HOME, or --archive):
-  uv run python scripts/game-saves.py add-old-drive old-pc --drive E:/old-c --installs E:/old-c/_games
-  uv run python scripts/game-saves.py add-live c --scope C:/ --installs C:/games
-  uv run python scripts/game-saves.py add-live d --scope D:/ --installs D:/_games
-  uv run python scripts/game-saves.py gaps old-pc      # save-like folders nothing covers (old drives)
-  uv run python scripts/game-saves.py preview old-pc   # what a backup would copy, nothing written
-  uv run python scripts/game-saves.py backup old-pc
-  uv run python scripts/game-saves.py verify old-pc    # every current save file is in the backup, same hash
-  uv run python scripts/game-saves.py index old-pc     # games.json/.md: save timeline, play time, mods
+  python <skill>/scripts/game-saves.py add-old-drive old-pc --drive E:/old-c --installs E:/old-c/_games
+  python <skill>/scripts/game-saves.py add-live c --scope C:/ --installs C:/games
+  python <skill>/scripts/game-saves.py add-live d --scope D:/ --installs D:/_games
+  python <skill>/scripts/game-saves.py gaps old-pc      # save-like folders nothing covers (old drives)
+  python <skill>/scripts/game-saves.py preview old-pc   # what a backup would copy, nothing written
+  python <skill>/scripts/game-saves.py backup old-pc
+  python <skill>/scripts/game-saves.py verify old-pc    # every current save file is in the backup, same hash
+  python <skill>/scripts/game-saves.py index old-pc     # games.json/.md: save timeline, play time, mods
 
 A live target skips the folders of every other target inside its scope (an old drive copy
 kept on C: is its own target). Only the system-drive target keeps registry saves. An old
 drive's target ignores the live registry and restores to this PC's matching folders. See
-docs/game-saves.md.
+references/game-saves.md.
 
 Needs ludusavi on PATH (scoop install extras/ludusavi). Standard library only.
 """

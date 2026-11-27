@@ -47,9 +47,9 @@ C: stays out of the C: target. Only the system-drive target keeps registry saves
 ## Setting up targets
 
 ```shell
-uv run python scripts/game-saves.py add-old-drive old-pc --drive E:/old-c --installs E:/old-c/_games
-uv run python scripts/game-saves.py add-live c --scope C:/ --installs C:/games
-uv run python scripts/game-saves.py add-live d --scope D:/ --installs D:/_games
+python <skill>/scripts/game-saves.py add-old-drive old-pc --drive E:/old-c --installs E:/old-c/_games
+python <skill>/scripts/game-saves.py add-live c --scope C:/ --installs C:/games
+python <skill>/scripts/game-saves.py add-live d --scope D:/ --installs D:/_games
 ```
 
 - **An old drive** is scanned as a Windows drive at its default folder locations, plus its
@@ -64,10 +64,10 @@ anything from outside slips through.
 ## Backing up
 
 ```shell
-uv run python scripts/game-saves.py gaps old-pc       # old drives: save-like folders nothing covers yet
-uv run python scripts/game-saves.py preview old-pc    # what a backup would copy, nothing written
-uv run python scripts/game-saves.py backup old-pc     # back up, then verify
-uv run python scripts/game-saves.py verify old-pc     # verify again, any time
+python <skill>/scripts/game-saves.py gaps old-pc       # old drives: save-like folders nothing covers yet
+python <skill>/scripts/game-saves.py preview old-pc    # what a backup would copy, nothing written
+python <skill>/scripts/game-saves.py backup old-pc     # back up, then verify
+python <skill>/scripts/game-saves.py verify old-pc     # verify again, any time
 ```
 
 `gaps` lists the folders where games usually save (`Saved Games`, `Documents`,
@@ -83,7 +83,7 @@ command takes game names to limit it to those.
 ## The index: when and how each game was played
 
 ```shell
-uv run python scripts/game-saves.py index old-pc   # writes <target>/games.json and games.md
+python <skill>/scripts/game-saves.py index old-pc   # writes <target>/games.json and games.md
 ```
 
 Run it after a backup. It reads the backup, so it works after the original drive is gone, and

@@ -8,6 +8,10 @@ never edit or commit them, edit the source here and reinstall.
 - **[herdr-remote](herdr-remote/SKILL.md)** — Herdr desktop app with a Linux controller reaching
   this Windows machine and its WSL distro over SSH: setup steps, plus `doctor`, `status` and
   `key-line` commands (`scripts/herdr-remote.py`)
+- **[drive-salvage](drive-salvage/SKILL.md)** — save everything personal from a Windows install
+  or drive before it goes. That covers personal files, the personal data apps keep in AppData,
+  game saves with metadata (Ludusavi), and a software list. Then check that nothing personal
+  is left (`scripts/game-saves.py`, `scripts/personal-data.py`)
 
 ## Install
 
@@ -15,6 +19,7 @@ From the repo root, in this project:
 
 ```powershell
 npx skills add ./skills --skill herdr-remote -a universal claude-code -y
+npx skills add ./skills --skill drive-salvage -a universal claude-code -y
 ```
 
 `-a universal claude-code` puts the real copy in `.agents/skills/`, which every agent but Claude

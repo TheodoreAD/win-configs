@@ -8,7 +8,8 @@ Also in this repo:
 - **[herdr/](herdr/README.md)** — Herdr desktop app settings, Estro layout and mods
 - **[ssh/](ssh/config)** — `~/.ssh/config` template (see "Git over SSH" below)
 - **[skills/](skills/README.md)** — agent skills authored here, installed with `npx skills`
-  (Herdr remote setup with doctor/status)
+  (Herdr remote setup with doctor/status; drive-salvage, which saves everything personal and
+  the game saves from a Windows install or drive before it goes)
 - **[git/gitattributes](git/gitattributes)** — line-ending template for repos
 - **[docs/claude-windows-tools.md](docs/claude-windows-tools.md)** — Claude Code's shell, the
   PowerShell profile, aliases and PATH order
@@ -21,9 +22,7 @@ Also in this repo:
   `check-readme-blocks.py` (check that the README's PowerShell blocks parse),
   `stage-hunks.py` (stage only some of a file's changes, for one commit per change),
   `set-refresh.py` (list or switch the display's refresh rate, e.g. 30 Hz on the desktop and
-  165 Hz for games), `game-saves.py` (game-save archive with Ludusavi, see
-  [docs/game-saves.md](docs/game-saves.md)), `old-drive-personal.py` (copy an old drive's
-  personal data and find what's left, see [docs/old-drives.md](docs/old-drives.md))
+  165 Hz for games)
 
 ## Development tools installation
 
@@ -323,9 +322,10 @@ scoop install tilt-dev/tilt
 
 - **Obsidian and Syncthing** — notes and device-to-device sync. Install commands, update
   caveats, `.stignore`, backups and vault layout: [docs/obsidian-syncthing.md](docs/obsidian-syncthing.md).
-- **Ludusavi** — game saves and settings, from this PC and from old drive copies, in one
-  archive outside the repo: [docs/game-saves.md](docs/game-saves.md). To empty an old drive
-  copy (saves, then personal data, then a check of what's left): [docs/old-drives.md](docs/old-drives.md).
+- **Ludusavi** (`scoop install extras/ludusavi`) — game saves and settings, from this PC and
+  from old drive copies, in one archive outside the repo. Used by the
+  [drive-salvage](skills/drive-salvage/SKILL.md) skill, which also saves the rest of a drive's
+  personal data before it's deleted.
 
 ## WSL and Docker
 

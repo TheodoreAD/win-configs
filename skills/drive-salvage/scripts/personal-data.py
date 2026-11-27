@@ -1,9 +1,17 @@
-"""Copy an old drive copy's personal data (everything that isn't a game save or software) to a
-backup disk, verify it, and find what's still left. See docs/old-drives.md for the procedure.
+"""Copy a Windows drive's personal data (everything that isn't a game save or software) to a
+backup disk, verify it, list what software it had, and find what's still left. The drive is
+any root holding a Users folder: an old system drive copy, another disk, or this PC's C:.
+See references/retiring-a-drive.md for the procedure.
 
-  uv run python scripts/old-drive-personal.py copy E:/old-c --dest D:/_backups/old-drives/old-pc/personal
-  uv run python scripts/old-drive-personal.py leftovers E:/old-c --dest D:/_backups/old-drives/old-pc/personal \
-      --saves D:/_backups/game-saves/old-pc/backup
+  python <skill>/scripts/personal-data.py inventory E:/old-c --out D:/_backups/old-drives/old-pc
+  python <skill>/scripts/personal-data.py copy E:/old-c --dest D:/_backups/old-drives/old-pc/personal
+  python <skill>/scripts/personal-data.py leftovers E:/old-c --dest D:/_backups/old-drives/old-pc/personal \
+      --saves D:/_backups/game-saves/old-pc/backup --installs E:/old-c/_games
+
+inventory writes software.json and software.md: what was installed, as names and versions
+only, to help reinstall. Program Files and per-profile app folders, Chocolatey and scoop
+packages, Steam and GOG installs, and the game install folders you name. On this PC's own
+system drive it adds Windows' installed-programs list from the registry.
 
 copy, for every user profile on the drive:
   - the user folders (Desktop, Documents, Pictures, ...) and code folders,
@@ -16,7 +24,7 @@ only what's new or changed and checks everything again.
 
 It never copies credential stores (.ssh, .gnupg, cloud CLI configs, password databases,
 browser saved logins, Windows' credential and key folders, chat clients' plain-text account
-files). leftovers lists those it found, by name only, for you to decide.
+files): those go with the drive. leftovers lists the ones it found, by name only.
 
 leftovers walks every file on the drive and sets aside what's in either backup and what's
 under Program Files, ProgramData or Windows. What remains is grouped by folder, with counts
@@ -30,6 +38,7 @@ Standard library only; robocopy ships with Windows.
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import subprocess
@@ -260,6 +269,104 @@ def cmd_leftovers(a) -> None:
             print(f"  {s}")
 
 
+def child_names(p: Path) -> list[str]:
+    try:
+        return sorted(c.name for c in p.iterdir() if c.is_dir() and not c.name.startswith("."))
+    except OSError:
+        return []
+
+
+def vdf_values(text: str, name: str) -> list[str]:
+    return re.findall(rf'"{name}"\s+"([^"]*)"', text, re.IGNORECASE)
+
+
+def registry_programs() -> list[dict]:
+    """Windows' installed-programs list (the Uninstall keys), for this PC only."""
+    import winreg
+    found = []
+    for hive, path in ((winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall"),
+                       (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall"),
+                       (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall")):
+        try:
+            root = winreg.OpenKey(hive, path)
+        except OSError:
+            continue
+        for i in range(winreg.QueryInfoKey(root)[0]):
+            try:
+                with winreg.OpenKey(root, winreg.EnumKey(root, i)) as k:
+                    vals = {}
+                    for v in ("DisplayName", "DisplayVersion", "Publisher", "InstallDate", "SystemComponent"):
+                        try:
+                            vals[v] = winreg.QueryValueEx(k, v)[0]
+                        except OSError:
+                            pass
+                    if vals.get("DisplayName") and not vals.get("SystemComponent"):
+                        found.append({"name": vals["DisplayName"], "version": vals.get("DisplayVersion", ""),
+                                      "publisher": vals.get("Publisher", ""), "installed": vals.get("InstallDate", "")})
+            except OSError:
+                continue
+    unique = {(p["name"], p["version"]): p for p in found}
+    return sorted(unique.values(), key=lambda p: p["name"].lower())
+
+
+def cmd_inventory(a) -> None:
+    drive, out = Path(a.drive), Path(a.out)
+    inv: dict[str, list] = {}
+    for pf in ("Program Files", "Program Files (x86)"):
+        if (drive / pf).is_dir():
+            inv[pf] = [{"name": n, "contains": child_names(drive / pf / n)[:15]}
+                       for n in child_names(drive / pf) if n.lower() not in ("common files", "windowsapps")]
+    if (drive / "ProgramData/chocolatey/lib").is_dir():
+        inv["Chocolatey packages"] = child_names(drive / "ProgramData/chocolatey/lib")
+    for prof in profiles(drive):
+        if (prof / "scoop/apps").is_dir():
+            inv[f"scoop apps ({prof.name})"] = child_names(prof / "scoop/apps")
+        if (prof / "AppData/Local/Programs").is_dir():
+            inv[f"per-user programs ({prof.name})"] = child_names(prof / "AppData/Local/Programs")
+    steam_games = []
+    for steam in (drive / "Program Files (x86)/Steam", drive / "Program Files/Steam"):
+        libs = [steam]
+        lf = steam / "steamapps/libraryfolders.vdf"
+        if lf.is_file():
+            libs += [Path(p.replace("\\\\", "\\")) for p in vdf_values(lf.read_text(errors="replace"), "path")]
+        for lib in libs:
+            for acf in (lib / "steamapps").glob("appmanifest_*.acf"):
+                t = acf.read_text(encoding="utf-8", errors="replace")
+                steam_games.append({"name": (vdf_values(t, "name") or ["?"])[0],
+                                    "appid": (vdf_values(t, "appid") or ["?"])[0], "library": str(lib)})
+    if steam_games:
+        inv["Steam games installed"] = sorted({(g["name"], g["appid"]): g for g in steam_games}.values(),
+                                              key=lambda g: g["name"].lower())
+    for gog in (drive / "Program Files (x86)/GOG Galaxy/Games", drive / "GOG Games"):
+        if gog.is_dir():
+            inv[f"GOG installs ({gog})"] = child_names(gog)
+    for i in a.installs:
+        inv[f"game installs ({i})"] = child_names(Path(i))
+    system_drive = os.environ.get("SystemDrive", "C:")
+    if key(drive) == key(system_drive + "\\") or key(drive) == key(system_drive):
+        inv["Windows installed programs"] = registry_programs()
+    elif (drive / "Windows/System32/config/SOFTWARE").is_file():
+        inv["note"] = ["This drive has its own Windows registry (Windows\\System32\\config\\SOFTWARE). Its "
+                       "installed-programs list can be read by loading the hive in an admin shell."]
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "software.json").write_text(json.dumps(inv, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    lines = [f"# Software on {drive}", "", "Names and versions only, to help reinstall. Nothing here was copied.", ""]
+    for section, items in inv.items():
+        lines += [f"## {section}", ""]
+        for it in items:
+            if isinstance(it, dict) and "contains" in it:
+                lines.append(f"- **{it['name']}**" + (f" — {', '.join(it['contains'])}" if it["contains"] else ""))
+            elif isinstance(it, dict) and "appid" in it:
+                lines.append(f"- **{it['name']}** — Steam {it['appid']}")
+            elif isinstance(it, dict):
+                lines.append(f"- **{it['name']}** — {' '.join(x for x in (it['version'], it['publisher']) if x)}")
+            else:
+                lines.append(f"- {it}")
+        lines.append("")
+    (out / "software.md").write_text("\n".join(lines), encoding="utf-8", newline="\n")
+    print(f"{sum(len(v) for v in inv.values())} entries in {len(inv)} sections\n{out / 'software.md'}")
+
+
 def main() -> None:
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -275,8 +382,12 @@ def main() -> None:
     s.add_argument("--installs", nargs="*", default=[],
                    help="game install folders: software, their saves already taken by game-saves.py")
     s.add_argument("--limit", type=int, default=60, help="folders to list (default 60)")
+    s = sub.add_parser("inventory", help="list the software the drive had: names and versions only")
+    s.add_argument("drive")
+    s.add_argument("--out", required=True, help="folder for software.json and software.md")
+    s.add_argument("--installs", nargs="*", default=[], help="game install folders to list")
     a = p.parse_args()
-    {"copy": cmd_copy, "leftovers": cmd_leftovers}[a.cmd](a)
+    {"copy": cmd_copy, "leftovers": cmd_leftovers, "inventory": cmd_inventory}[a.cmd](a)
 
 
 if __name__ == "__main__":
