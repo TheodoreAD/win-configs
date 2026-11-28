@@ -326,6 +326,9 @@ scoop install tilt-dev/tilt
   from old drive copies, in one archive outside the repo. Used by the
   [drive-salvage](skills/drive-salvage/SKILL.md) skill, which also saves the rest of a drive's
   personal data before it's deleted.
+- **smartmontools** (`scoop install main/smartmontools`) — drive health: `smartctl -x /dev/sdN`
+  from an admin shell (`sda` is physical disk 0). Wear, data written and media errors for SSDs;
+  reallocated, pending and uncorrectable sectors for hard drives.
 
 ## WSL and Docker
 
