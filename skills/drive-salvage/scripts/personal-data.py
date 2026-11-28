@@ -67,6 +67,8 @@ APP_DATA = [
     "AppData/Roaming/Vortex/state.v2",                # Vortex: which mods, for which game (the archives
     "AppData/Roaming/Vortex/metadb",                  # in downloads/ and staging are re-downloadable)
     "AppData/Roaming/bibisco",                        # bibisco writing app settings and project list
+    "AppData/Local/Microsoft/Windows/Fonts",          # fonts installed for this user only
+    "AppData/Local/Microsoft/Windows/FileHistory/Configuration",  # where File History backed up to
 ]
 PROFILE_FILES = [
     ".gitconfig", ".gitconfig.backup", ".bash_history", ".bashrc", ".bash_profile", ".profile", ".vimrc",
@@ -79,6 +81,10 @@ PROFILE_FILES = [
     "AppData/Local/BraveSoftware/Brave-Browser/User Data/*/Bookmarks",
     "AppData/Local/BraveSoftware/Brave-Browser/User Data/*/History",
     "AppData/Roaming/Sublime Text*/Local/Session.sublime_session",  # unsaved Sublime Text tabs
+    # Browsers' last open tabs and windows.
+    "AppData/Local/Google/Chrome/User Data/*/Current Session", "AppData/Local/Google/Chrome/User Data/*/Current Tabs",
+    "AppData/Local/Google/Chrome/User Data/*/Sessions/*", "AppData/Local/Microsoft/Edge/User Data/*/Sessions/*",
+    "AppData/Local/BraveSoftware/Brave-Browser/User Data/*/Sessions/*",
     # Developer tools' histories and scratch files: small, and nowhere else.
     ".ipython/profile_*/history.sqlite", ".spyder-py3/*.py", ".idlerc/recent-files.lst",
     ".jupyter/custom/*", ".jupyter/*.py", ".jupyter/nbconfig/*.json",

@@ -111,6 +111,10 @@ never goes in a repo.
 - **`scripts/probe-disk.py`** — what's on a disk Windows sees no partitions on (admin, read-only)
 - **`scripts/deep-survey.py`** — the closer look after `leftovers`: installs, Recycle Bin, top-level
   folders, portable tools, partly copied profile items
+- **`scripts/registry-export.py`** — optional, admin: games' registry keys and the whole
+  `HKCU\Software` branch from a copied `NTUSER.DAT`, as readable, restorable `.reg` files. The
+  hive is already kept, so this only makes it usable. Check first how many games keep saves
+  (not just settings) there: on the first two drives, it was one each.
 - **`references/retiring-a-drive.md`** — the full procedure, step by step
 - **`references/game-saves.md`** — the archive layout, targets, custom games, the index, restoring
 
